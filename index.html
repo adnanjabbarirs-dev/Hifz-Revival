@@ -89,6 +89,13 @@ textarea{min-height:80px;font-size:.78rem}
 .ixpanel{padding:4px 4px 12px 52px;border-top:0}
 .rkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin-top:8px}
 .rkgrid button{padding:6px 4px;font-size:.78rem;font-weight:600;line-height:1.25}
+.rk{display:grid;grid-template-columns:1fr auto;gap:0}
+.rk>button:first-child{border-radius:10px 0 0 10px}
+.rk>button.rkp{border-radius:0 10px 10px 0;border-left:0;padding:6px 9px;color:var(--accent)}
+.qchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.qchips button{padding:5px 9px;font-size:.8rem;font-variant-numeric:tabular-nums}
+.qprog{height:6px;border-radius:99px;background:var(--bg);overflow:hidden;margin-top:6px}
+.qprog i{display:block;height:100%;background:var(--gold);width:0}
 .rkgrid button small{display:block;font-weight:400;color:var(--muted);font-size:.7rem}
 .pggrid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
 .pggrid button{padding:6px 0;font-size:.74rem;font-variant-numeric:tabular-nums;font-weight:600;min-width:0}
@@ -203,6 +210,7 @@ nav button[aria-current="true"]{color:var(--accent);background:none}
 <audio id="au" preload="metadata"></audio>
 <input type="file" id="pdfIn" accept="application/pdf" hidden>
 <input type="file" id="audIn" accept="audio/*" hidden>
+<input type="file" id="qIn" accept="audio/*,.mp3,.m4a" multiple hidden>
 <input type="file" id="zipIn" accept=".zip,application/zip,application/json,.json" hidden>
 
 <script>
@@ -491,7 +499,7 @@ async function loadRec(id){
   renderDock();
 }
 function recDur(r){return (player.id===r.id&&isFinite(au.duration))?au.duration:(r.dur||0)}
-function playRange(a,b,times){au.currentTime=a;player.a=a;player.b=b;player.left=times||S.settings.repeat||1;au.play().catch(()=>{});renderDock()}
+function playRange(a,b,times){player.qq=null;au.currentTime=a;player.a=a;player.b=b;player.left=times||S.settings.repeat||1;au.play().catch(()=>{});renderDock()}
 async function playMarker(recId,i){
   if(player.id!==recId)await loadRec(recId);
   const r=curRec(),ms=r.markers.slice().sort((a,b)=>a.t-b.t),m=ms[i];
@@ -499,6 +507,7 @@ async function playMarker(recId,i){
   playRange(m.t,nxt?nxt.t:(isFinite(au.duration)?au.duration:m.t+600),S.settings.repeat);
 }
 function rangeCheck(){
+  if(player.qq){if(!player.qq.done&&player.b!=null&&!au.paused&&au.currentTime>=player.b){au.pause();qqStep()}return}
   if(player.b!=null&&!au.paused&&au.currentTime>=player.b){
     if(player.loop){au.currentTime=player.a||0}
     else if(player.q&&!player.whole){au.pause();if(!clipDone())player.q=null}
@@ -514,7 +523,7 @@ au.addEventListener('timeupdate',()=>{
   if(review&&tab==='audio')reviewTick();
 });
 au.addEventListener('play',renderDock);au.addEventListener('pause',()=>{renderDock();if(review&&tab==='audio')reviewTick()});
-au.addEventListener('ended',()=>{if(player.q&&player.whole){if(clipDone())return;player.q=null}renderDock()});
+au.addEventListener('ended',()=>{if(player.qq)return;if(player.q&&player.whole){if(clipDone())return;player.q=null}renderDock()});
 function clipDone(){
   if(player.left>1){player.left--;au.currentTime=player.whole?0:player.a;au.play().catch(()=>{});return true}
   if(player.q&&player.qi+1<player.q.length){playQ(player.qi+1);return true}
@@ -641,7 +650,8 @@ async function applyTransfer(){
     st.recs=st.recs.filter(r=>!r.src||st.recs.some(x=>x.id===r.src));
     const pf=imp.files['hifz-revival/mushaf.pdf'];
     if(pf){say('Copying the mushaf…');const pb=new Blob([pf.blob],{type:'application/pdf'});const idx=imp.pdfIdx||await indexPdfPages(pb);await iput('pdf',pb);await iput('pdfIdx',idx);pdfBlob=await iget('pdf')||pb;pdfIdx=idx;urlCache.forEach(u=>URL.revokeObjectURL(u));urlCache.clear()}
-    S=Object.assign(JSON.parse(JSON.stringify(DEFAULTS)),st);S.settings=Object.assign({},DEFAULTS.settings,st.settings);S.today=null;
+    const myQ=S.qari;S=Object.assign(JSON.parse(JSON.stringify(DEFAULTS)),st);S.settings=Object.assign({},DEFAULTS.settings,st.settings);S.today=null;
+    if(S.qari){S.qari.prev=S.qari.files;S.qari.files={}}if(myQ&&Object.keys(myQ.files||{}).length)S.qari=myQ;
     await iput('state',S);imp=null;curPage=(todayPlan().sabaq[0])||F();player={id:null};au.removeAttribute('src');
     toast('Transfer complete');go('today');renderDock();
   }catch(e){say('Stopped: '+(e.message||e.name||'storage error')+'. Free some space and try again.')}
@@ -667,7 +677,8 @@ function renderDock(){
      <span class="grow tnum" style="text-align:right" id="arT">${ar.recording?'<span class="recdot"></span>'+mmss((Date.now()-ar.start)/1000):''}</span></div>
      <div class="row" style="margin-top:6px">${ar.recording?'<button class="grow" data-act="ayStop">■ Stop</button><button class="primary grow" data-act="ayNext">Stop & next ▶</button>':'<button class="primary grow" data-act="ayStart">● Start ayah '+ar.ayah+'</button>'}</div>
      <div class="note" style="margin-top:4px">${ar.recording?'Tap the start of the next ayah to save this one and begin the next.':ar.pos?'Start point set on page '+ar.pos.page+'. Tap Start, then recite.':'Tap where the ayah begins on the page, then Start.'}</div></div>`}
-  const r=curRec();
+  if(qBusy&&tab!=='audio')h+=`<div><div class="note" id="qpm">${esc(qMsg)}</div><div class="qprog"><i id="qpb" style="width:${Math.round(qPct*100)}%"></i></div></div>`;
+  const r=curRec()||(player.qq?{title:player.qq.label+(player.qq.items.length>1?' · '+(player.qq.i+1)+'/'+player.qq.items.length:'')+(player.left>1?' · '+player.left+' left':''),dur:au.duration}:null);
   if(r&&!rec.on&&!ar.recording&&!(review&&tab==='audio')){const d=isFinite(au.duration)?au.duration:(r.dur||0);
     h+=`<div><div class="row"><button class="small primary" data-act="pp" aria-label="${au.paused?'Play':'Pause'}">${au.paused?'▶':'❚❚'}</button>
      <div class="grow"><div class="note" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.title)}</div><input type="range" id="seek" min="0" max="${d}" step="0.1" value="${au.currentTime}" aria-label="Position"></div>
@@ -794,6 +805,7 @@ async function vMushaf(){
    <div class="rate"><button class="r-s" data-rate="strong">Smooth</button><button class="r-p" data-rate="partial">Some slips</button><button class="r-f" data-rate="forgotten">Lost it</button></div>
    <p class="note" style="margin:8px 0 0">${x?`Now <span class="chip c-${x.cat}">${LABEL[x.cat]}</span> · last ${nice(x.last)}${x.next?' · review '+nice(x.next):''}`:'Not rated yet.'}${S.mem[p]?` · in your hifz since ${S.mem[p].d==='known'?'before':nice(S.mem[p].d)}`:''}</p>
    ${S.mem[p]?`<button class="small" data-act="unmemorize" style="margin-top:8px">Remove from memorized</button>`:''}</section>
+  ${qPageHTML(p)?`<section class="card" id="pageQari">${qPageHTML(p)}</section>`:''}
   <section class="card" id="pageMarks">${pageMarksHTML(p)}</section>
   <section class="card" id="pageAudio">${pageAudioHTML(p)}</section>`;
   const pi=$('#pgIn');if(pi)pi.onchange=()=>openPage(+pi.value||F());
@@ -938,7 +950,7 @@ function vAudio(){
   const groups={};S.recs.filter(r=>audView==='clips'?r.kind==='ayah':r.kind!=='ayah').forEach(r=>{(groups[r.date]=groups[r.date]||[]).push(r)});
   const nClips=S.recs.filter(r=>r.kind==='ayah').length,nSess=S.recs.length-nClips;
   const r=curRec(),ms=r?r.markers.slice().sort((a,b)=>a.t-b.t):[];
-  $('#view').innerHTML=`
+  $('#view').innerHTML=`${qCardHTML()}
   <section class="card"><h2>Recite a surah, split automatically</h2>
    <p style="margin-top:0">Recite continuously and pause briefly after each ayah. The app finds the pauses and cuts the recording into ayat. You check the result before it is saved.</p>
    <label class="f" for="auS">Surah</label><select id="auS">${SN.map((nm,i)=>`<option value="${i+1}" ${as===i+1?'selected':''}>${i+1} · ${esc(nm)} (${AY[i]} ayat)</option>`).join('')}</select>
@@ -963,6 +975,7 @@ function vAudio(){
      <div class="row" style="margin-top:6px"><button class="small primary" ${r.kind==='ayah'?`data-clip="${r.id}"`:`data-load="${r.id}"`}>${player.id===r.id?'Loaded':'▶ Play'}</button>${r.kind==='ayah'?`<button class="small" data-gopage="${r.page}">Page ${r.page}</button>`:''}${r.auto?`<button class="small" data-review="${r.id}">✂ ${S.recs.some(x=>x.src===r.id)?'Re-split':'Split into ayat'}</button>`:''}${r.src?'':`<button class="small" data-save="${r.id}">Save copy</button>`}<button class="small danger" data-del="${r.id}">Delete</button></div></div></div>`).join('')).join('')
    :`<p class="note" style="margin:0">${audView==='clips'?'Ayah clips you record on the mushaf appear here by date.':'Full-session recordings appear here by date.'}</p>`}</section>`;
   const rep=$('#rep');if(rep)rep.onchange=()=>{S.settings.repeat=+rep.value;save()};
+  const qe=$('#qEach');if(qe)qe.onchange=()=>{S.settings.qEach=+qe.value;save()};const qa=$('#qAll');if(qa)qa.onchange=()=>{S.settings.qAll=+qa.value;save()};
   const auS=$('#auS');if(auS)auS.onchange=()=>{const v=+auS.value;S.settings.autoSurah=v;save();$('#auI').value=(v===1||v===9)?'0':'1';$('#auA').max=AY[v-1]};
   document.querySelectorAll('[data-lbl]').forEach(i=>i.onchange=()=>{const r=curRec(),sorted=r.markers.slice().sort((a,b)=>a.t-b.t);sorted[+i.dataset.lbl].label=i.value;save()});
   document.querySelectorAll('[data-rename]').forEach(i=>i.onchange=()=>{const r=S.recs.find(x=>x.id===i.dataset.rename);r.title=i.value||r.title;save();renderDock()});
@@ -976,43 +989,46 @@ async function openReview(id){
     minPause:S.settings.minPause||.8,thr:S.settings.thr||.3,dropped:new Set(),cols:null};
   detect();await loadRec(id);au.pause();tab='audio';go('audio');
 }
-function detect(count){const res=segmentEnergy(review.E,review.fr,{minPause:review.minPause,thr:review.thr,count});review.cuts=res.cuts;review.start=res.start;review.end=res.end;review.dropped=new Set()}
+function detect(count){if(review.kind==='qari'){const r=qAlign(review.surah,review.E,review.fr,review.thr,review.intro);if(r){review.cuts=r.cuts;review.start=r.start;review.end=r.end}review.dropped=new Set();return}
+  const res=segmentEnergy(review.E,review.fr,{minPause:review.minPause,thr:review.thr,count});review.cuts=res.cuts;review.start=res.start;review.end=res.end;review.dropped=new Set()}
 function segs(){
   const c=review.cuts.slice().sort((x,y)=>x.a-y.a),out=[];let t0=review.start;
   for(const k of c){out.push([t0,k.a]);t0=k.b}out.push([t0,review.end]);
-  const dur=review.E.length*review.fr;let k=0;const names=INTRO[review.intro]||[];
+  const dur=review.E.length*review.fr;let k=0;const names=review.kind==='qari'?qIntroNames(review.surah,review.intro):(INTRO[review.intro]||[]);
   return out.map(([a,b])=>{const s={t0:Math.max(0,a-.12),t1:Math.min(dur,b+.22),key:Math.round(a*10)};
     if(review.dropped.has(s.key)){s.drop=true;s.label='Removed'}else if(k<names.length){s.label=names[k];s.ayah=0;k++}else{s.ayah=review.startAyah+k-names.length;s.label='Ayah '+s.ayah;k++}
     return s});
 }
 function vReview(){
-  const r=S.recs.find(x=>x.id===review.id);if(!r){review=null;return vAudio()}
+  const qr=review.kind==='qari';const r=qr?{}:S.recs.find(x=>x.id===review.id);if(!r){review=null;return vAudio()}
   const list=segs(),ay=list.filter(s=>s.ayah>0),total=AY[review.surah-1];
   const lastA=ay.length?ay[ay.length-1].ayah:0,expect=total-review.startAyah+1;
   const warn=lastA>total?`<div class="banner">That is ${lastA-total} more than the ${total} ayat in this surah. Join clips that were cut at a waqf pause, or raise the pause length.</div>`
     :lastA<total?`<p class="note">Ends at ayah ${lastA}. If you recited to ayah ${total}, some ayat were joined. Split them, lower the pause length, or tap Match.</p>`
     :`<p class="note" style="color:var(--strong)">✓ Matches the ${total} ayat of this surah. Listen to a few to confirm.</p>`;
   $('#view').innerHTML=`
-  <section class="card"><div class="row"><h2 class="grow" style="margin:0">Check the split</h2><button class="small" data-act="revCancel">Close</button></div>
-   <p style="margin:4px 0 0"><b>Surah ${review.surah} · ${esc(SN[review.surah-1])}</b> <span class="note">· ${mmss(review.E.length*review.fr)} recorded</span></p>
+  <section class="card"><div class="row"><h2 class="grow" style="margin:0">${qr?'Check ayah timings':'Check the split'}</h2><button class="small" data-act="revCancel">Close</button></div>
+   <p style="margin:4px 0 0"><b>Surah ${review.surah} · ${esc(SN[review.surah-1])}</b> <span class="note">· ${qr?esc(qState().name):mmss(review.E.length*review.fr)+' recorded'}</span></p>
    <div class="stats" style="margin-top:10px"><div class="stat"><b>${list.filter(s=>!s.drop).length}</b><span>Clips</span></div><div class="stat"><b>${ay.length?ay[0].ayah+'–'+lastA:'–'}</b><span>Ayat</span></div><div class="stat"><b>${total}</b><span>In surah</span></div></div>
    ${warn}
-   <div class="grid2"><div><label class="f" for="rvA">From ayah</label><input id="rvA" type="number" inputmode="numeric" min="1" max="${total}" value="${review.startAyah}"></div>
+   ${qr?`<label class="f" for="rvI">Before ayah 1</label><select id="rvI">${[0,1,2].filter(n=>qIntroNames(review.surah,n).length===n||n===0).map(n=>`<option value="${n}" ${review.intro===n?'selected':''}>${qIntroNames(review.surah,n).join(' + ')||'Nothing'}</option>`).join('')}</select>
+   <label class="f" for="rvT">Silence level: <b id="rvTv">${Math.round(review.thr*100)}%</b> <span class="note">(change it and the ayat are matched again)</span></label><input id="rvT" type="range" min="0.12" max="0.6" step="0.02" value="${review.thr}"></section>`:''}
+   ${qr?'':`<div class="grid2"><div><label class="f" for="rvA">From ayah</label><input id="rvA" type="number" inputmode="numeric" min="1" max="${total}" value="${review.startAyah}"></div>
     <div><label class="f" for="rvI">Before ayah ${review.startAyah}</label><select id="rvI">${['Nothing','Bismillah',"Ta'awwudh + Bismillah"].map((t,i)=>`<option value="${i}" ${review.intro===i?'selected':''}>${t}</option>`).join('')}</select></div></div>
    <label class="f" for="rvP">Pause needed between ayat: <b id="rvPv">${review.minPause.toFixed(1)} s</b></label><input id="rvP" type="range" min="0.3" max="2.5" step="0.1" value="${review.minPause}">
    <label class="f" for="rvT">Silence level: <b id="rvTv">${Math.round(review.thr*100)}%</b> <span class="note">(raise it in a noisy room)</span></label><input id="rvT" type="range" min="0.12" max="0.6" step="0.02" value="${review.thr}">
-   <div class="row" style="margin-top:10px"><span class="note">Match exactly</span><input id="rvN" class="ayahin" type="number" inputmode="numeric" min="1" value="${Math.max(1,expect)}" aria-label="Number of ayat recited"><span class="note grow">ayat</span><button class="small" data-act="revMatch">Match</button></div></section>
+   <div class="row" style="margin-top:10px"><span class="note">Match exactly</span><input id="rvN" class="ayahin" type="number" inputmode="numeric" min="1" value="${Math.max(1,expect)}" aria-label="Number of ayat recited"><span class="note grow">ayat</span><button class="small" data-act="revMatch">Match</button></div></section>`}
   <section class="card"><div class="stick"><canvas class="wave" id="wave" aria-label="Recording loudness with cut points"></canvas>
    <div class="row" style="margin-top:8px"><button class="small primary" data-act="revPP" id="revPP">${au.paused?'▶':'❚❚'}</button><span class="tnum note grow" id="revT">${mmss(au.currentTime)}</span><button class="small" data-act="revSplit" id="revSplit">✂ Split here</button></div>
    <p class="note" style="margin:4px 0 0">Tap the wave to listen from any point. Pause where a missed ayah ends, then tap Split here.</p></div>
    <div class="seglist">${list.map((s,i)=>`<div class="segrow ${s.drop?'drop':''}" data-i="${i}"><div><div class="name">${esc(s.label)}</div><div class="note tnum">${mmss(s.t0)}–${mmss(s.t1)} · ${(s.t1-s.t0).toFixed(1)} s</div></div>
-     <div class="row"><button class="small primary" data-seg="${i}" aria-label="Play ${esc(s.label)}">▶</button>${i<list.length-1?`<button class="small" data-join="${i}" aria-label="Join with next">Join ↓</button>`:''}<button class="small ${s.drop?'':'danger'}" data-drop="${i}">${s.drop?'Restore':'Remove'}</button></div></div>`).join('')}</div></section>
-  <button class="primary" data-act="revSave" style="width:100%;margin-bottom:12px">Save ${list.filter(s=>!s.drop).length} clips</button>`;
+     <div class="row"><button class="small primary" data-seg="${i}" aria-label="Play ${esc(s.label)}">▶</button>${i<list.length-1?`<button class="small" data-join="${i}" aria-label="Join with next">Join ↓</button>`:''}${qr?'':`<button class="small ${s.drop?'':'danger'}" data-drop="${i}">${s.drop?'Restore':'Remove'}</button>`}</div></div>`).join('')}</div></section>
+  <button class="primary" data-act="revSave" style="width:100%;margin-bottom:12px">${qr?'Save timings':'Save '+list.filter(s=>!s.drop).length+' clips'}</button>`;
   const rd=(id,fn)=>{const el=$(id);if(el)el.onchange=fn};
   rd('#rvA',()=>{review.startAyah=Math.max(1,parseInt($('#rvA').value,10)||1);vReview()});
-  rd('#rvI',()=>{review.intro=+$('#rvI').value;vReview()});
-  const P=$('#rvP');P.oninput=()=>{$('#rvPv').textContent=(+P.value).toFixed(1)+' s'};P.onchange=()=>{review.minPause=+P.value;S.settings.minPause=review.minPause;save();detect();review.cols=null;vReview()};
-  const T=$('#rvT');T.oninput=()=>{$('#rvTv').textContent=Math.round(T.value*100)+'%'};T.onchange=()=>{review.thr=+T.value;S.settings.thr=review.thr;save();detect();review.cols=null;vReview()};
+  rd('#rvI',()=>{review.intro=+$('#rvI').value;if(review.kind==='qari'){detect();review.cols=null}vReview()});
+  const P=$('#rvP');if(P)P.oninput=()=>{$('#rvPv').textContent=(+P.value).toFixed(1)+' s'};if(P)P.onchange=()=>{review.minPause=+P.value;S.settings.minPause=review.minPause;save();detect();review.cols=null;vReview()};
+  const T=$('#rvT');T.oninput=()=>{$('#rvTv').textContent=Math.round(T.value*100)+'%'};T.onchange=()=>{review.thr=+T.value;if(review.kind==='qari')S.settings.qThr=review.thr;else S.settings.thr=review.thr;save();detect();review.cols=null;vReview()};
   const w=$('#wave');w.onclick=e=>{const rc=w.getBoundingClientRect(),t=(e.clientX-rc.left)/rc.width*review.E.length*review.fr;player.a=null;player.b=null;player.q=null;au.currentTime=t;au.play().catch(()=>{});reviewTick()};
   reviewTick();renderDock();
 }
@@ -1032,6 +1048,7 @@ function reviewTick(){
   document.querySelectorAll('.segrow').forEach(el=>el.classList.toggle('cur',+el.dataset.i===cur));
 }
 async function saveReview(){
+  if(review.kind==='qari'){const s=review.surah;qSave(s,{intro:review.intro,start:review.start,end:review.end,cuts:review.cuts.slice().sort((x,y)=>x.a-y.a)},review.thr);S.qari.times[s].checked=true;save();review=null;au.pause();toast(SN[s-1]+': timings saved');render();renderDock();return}
   const r=S.recs.find(x=>x.id===review.id);if(!r)return;const list=segs();
   const old=S.recs.filter(x=>x.src===r.id),pos={};old.forEach(o=>{if(o.markers[0].x!=null)pos[o.ayah+'|'+o.title]=o.markers[0]});
   S.recs=S.recs.filter(x=>x.src!==r.id);
@@ -1048,6 +1065,191 @@ async function saveReview(){
   save();review=null;audView='clips';au.pause();toast(n+' ayah clips saved');render();renderDock();
 }
 
+/* ---------- Qari recitation: surah files linked from the phone ----------
+   Files are copied into the app (IndexedDB) so they play offline. Ayah timings are worked out on the phone:
+   the MP3 is decoded in short pieces at a low sample rate, pauses are found, and a dynamic-programming match
+   picks the pause that ends each ayah, guided by each ayah's printed length in this mushaf. */
+const IX_W='vAJPAssBrQGgAqMCYwZkANkDOAYhBy0DQQTxBB0EWAShBNYDwwKmBtoFJwOXBBcG4gFvB4cIkAQ3CIYGFgWdC0sMFAdCBSgGDglcBaUD2ge4BCQGwwZZA1IFlAMeBWYFEAOvAiEEMAPXAiQEiwVrBwgEUgTQAuYCBQr1BLMCHAcWCHAGfwqxFYoJ4AUTBdAEsQPkBrsGugWqBO0HrQNtBM8Llwb+BzsD+wOhCQcIUgWzBAgNqQacFHcFHAzaAwwKFgrZCv4E/ws5BswDoAnDBvUEmAMABCcIrBwrBFgFnQmQBVwFOQd/C5gGngazBX8MPwpMBIsEDQTUCCsE9whQBTUEZwUABkYIHwkvBVAGwQYNBq4CgAVwCa8ECgXdCoQGWwMvBV8KwwTpBpcOQAuxCWMFKQJXBXQFSQt5BlMCdgOwAw0F+AKOAyEH4QYzBNkEHAOsAtIO9gl5BLgHNgXIA60GtwWxBK8HrAnMBLMEHRXEDSsDhQZpBNYELwWzCqwQugYlGa4HYgtRBTANNQLfBWAIzgQpF1IJmQsNBa8JowW7AwgKwAVPBZgEgwSZBWYE/AW5Bj8IGBNZCycJrQj9Fk0GUQsqCtYP8griBm8F8gUIBaUChRBsER4LUxSCDkMXRgp+EBcK/Qx3A3MFxQrzAroCCgnoAvAFGRHUDdkJNRQABj8KcQOyEcEGQg9bCFwKwg7rFksNqQgsCCsEoQ6kCvcMsQr8BXkFXwVYCPsK+gyiByYQzwNiB0kETQbDBL8EjDDMC+QIGwoiEEEAuwGPBHwGEgNSBEgQqQTVA1EFlAXPA1YJewrmCAEEngTDBVgJhQoVCIcEzwYVBdMEGAgYB18JVAarB80EWQNlAz4CQgVICI8K8wQGCHUF1wYxBU4DwAfwB7QCtgavAg8P+wbiAugGiANDAgUL1gSMBLwCUwRIAsQJRwSCAtMKGQYnB4MFfAU2BXEDgQSwBggKJgMzDPMCjgm8ClMKpQV1Db4CdwW/CoAE/gboA1oDmgNABTkINgSpB4oDtQNlA7oHrQMeBgcFDwa4AwkMmwX9BIQGYQN0A3ADUApHBH8NGwVuB4EDRAZ0CEwKNAq5BzgEhgTfAwQF9QWwBaQD/QMZBZ0ECwJkAs0EAwaECBAG+gSoAloDOQkFA4gF1gRdCtQIsAcnB5IEmwVaAm4HORCbCW0ZigcuDJkEcAJqCoUGAAanBJwCFglwBm8D5gqWBRUEaAawA1sF7wUeBV0E4gb/A7wFXwttCdQIoAMtCy4FDwlZCswIJQhoA9oECQkxBNAHmAQ6EF4CtQIBBx8KQAQsC6IGCQpgBcoGMRIrCbIGHAf5BY0W0RlyB1cFIwrRBR4I8QkSDD8GIQTwBFcU1w4BFioFnwTdAmQHMASLBJoIygapDmEHzQx6BtcGDQWtBMoDlwVbEqsFkQP0D5sKgQb1BJkDkwj4A3kDRQd/A3IHBwiyBxIK/AmdBXYGDwbpCEAHVgk5AuUBCwhTAuoDzAWUBvwH6wsSCB8RoQySBkIELQhJBIkKIQfeBp4EugShBw8L4w5pDtAScwW7DOQMXQMKDA4GlgMtCzsJwRgKCEkHbwVbAsMEUQe+BmsEBASjBEwMCwmoBysGqANNA/4JNAMVA50IigYxBugG3wPjD0oL2witA7sKLQNfBCwFHQw2CjsGJALMBScL8gybBokERwaFA9sGuAODBAQE9giVA54GIw6MBwAIewIbClACgwQXBY8FagpJCkwFrAXrBKMDJgSdAxAI3BD6B80KHgRWBgYPaAdnEl8Wqgo0ELQangcOCjkEoAPACTEUvA24C+wJkgiEEFoL/wirB5sF9AUMCAkFDAQPBfMHFgVUBGwDwghTDwkNmQSdBUYIjwRZBXkEXQbOGAoLRAZCEK0MyQj+BBURNQqVA3YIDgrfBj4NdQXsAyEJjASpBnYKpAWxBeQFqBCqBGkIagdGCgAHzgbZBVIKKAffAq8HHwXbB04GkwNYB9UFXQuuBzwFlAVPA4EFFATlERoG/AbWBCUI6AfvDqwHuwkEA48DLQZUCAIDQwfyBqkG/Q87Cc8GEgXQF8wEhwejBVMHQAVKDKcI2AMCCFEDPwU9BA0EIAMABMsKAAXUA7ADMgWiA90IDgMmCN4CWgMsBboC5wpZBQYE3AQ+A1kDGgrhAzgFwAQEAy0GEQnEBJwF2gd0CMAD3QQlBmMFsQS6A0QEuwSQBnIDHAi8BPsFbgPpCMwFFAo0BuMJUgOhBvUGIwUHCFYHXQVZA7AF6AJpCLYCqgH+BwAElQ3GC8YCKwi4BFwEUQSMBWQFowTOBygIowREBQAJFwOlA9cEUwWLBr8FSQ3rB1QPkAqsBRkFcwUpBU0PZAWOBZ0EhAOGBd0D7gN6BNoIYwc3BSYIrQhBBQ4JUQTJBbsDWAM8CgoFSgiVCB4GaApgCtwDhwPgDVcDFgz9A6oDqQfOAj4HCQzCCcUKFAlmBzENRgboCZIP6wswC7EEwgwxA3QKrw/yC5gGcwZkA9kEQgwjCoUF9AQEBe0CfAIBCPwGYgBVBH0ESANfAwkDSALAA28EEQQgBoME1AN6AUoB2AJZBWEERgWjB8gBVQkTBBEErgKIBn4Kega+BTsGEAWZCC8I4wMIBkAEIQyKDWAFrwjvA64FSQz2B5QDkAZABIgF7ATxBZoGAgT/DCgMGAPGBZwKpgamBsoCfQPKA8AFwwWtBPcEjgOxAgoLCwY4Co0F/AtMCs8IRAOpBRAD8gXNBHUEgQU3AwUEnw/kCgkIbQfNC0kEtgKSBFUFigSiBkUHXwNnA4MDEgfrCN4DQAYHA5gFPwP3AREC0wLFAr4CYgGwA+oBHAORBGwDDwL+AXUBcAEdAbgG7QOWASQFzAg7Bu8HTQRDCP4D1wY6CMMDvQQQDCEI9AI2A+wHSQkqDugFXQiKDXAFVQifBpoNtQPDBaIEfgXDDVYMZhVyDFEDdhMoCQkHeguuBnAGRwPNBnAGUA4tBI4GDQlVBYACNwWQC7sD2wP9CVEFogJbA5IBUAN2B10DEQx3CIcKGgR0AuUCxwSDBWsIHAN0BKIE4QLdA24ErwJhB28DHQaQBLUG7AWQAuwD3wPxA8sHuAKwBLUFCQlwCNMEiwIbBAUHyQdVAuwIVAQZA48DfgQQCCMF7AipBP8D4wY1BnIFQQaeBFcIXwVnCf0HswXCBd8DFQ2hDdQHbwfmBPEFFwf0DPMGIAacA/kGnQXBBisDBgTvA4UE/wJUCxUEogSZBhUDsgkkCb4GlAOMA7sHoAT4EL0ExQbZB0ADGgXnChYIygohBsIJCAe4BIkDrgUSB4UIbgUHBGIIDQfwB+gIlAZIBLgCLAgBD18JVAcJBEILiQsUClQJgQX7BT8NiggUD2oKKwmLBaENyQU9Cz4FQgeVBrEGOwjoBeQFoAbdBEQJjQSRCPwGOwTZA6oFnQYFCl4K8gTJBbYG4wV5BsQJEQdFDxALuguECUcFjQ/UBFIDUAUPBLQIHQgtCT4D4Qh6BbgFJwYqBOcG9gSCB3UJIQinB5cL5gdOBbsFagbCCbEJIwi1BZ8F8QSRBjoERAoQCAcJTAU2D6gJogeVB7MFfgUVChILFgMkEqUG1QgSB8oHcAV/BQoIxAY2BbIBNAgdCUUKQgiYBKcFYgJBBrQFegf5CHcH/QOMDAcG5QT8Cp8GNQa0BtYN+QiOD7oDzAWACVYHkgMOBYUJtwNXA3oFmQjABOEGWAWBBvAD9QTzA64DdAPuBkwFMQR/Ap8GRQRGA20EcgNmBiYEngHYBHwDfAXFBesKTgPBAcsF8gOBCOIFhghXA4MFRAshBQIHpgejBVoDJgT8BSQCJgMvBY8CNwcwBE8DIwIzBiYKTQSaCccCQwXyCI4HpAPAArYCWgcDBVkEkgReBZcDWAhQA3wE+wZWB44DLgONAhgIQQIhB3YFRQshCOsD7AT1A1EIcwY4BS8FOAWyDCIIXwRvCKEDYwJnBSoF1AI5A40J6QZyB08DNgrPBCQD4gVWBP8EngQjBsUDgQexA9AF+QaYBqAE/waiBbQGqgYmBVQE8QYRBS0FYAIqBcgG4AQXBPgEBQlzBkQH2AX0AxYGbQNkA1YFowUhBAYESQU9BOoB5gR7BJAJxgOcAp4K0wTOAkgJNgbKA8sGaQuBB0cD+QbqBZoHtwc4A60CGQS7A2EDbANeCP4DSwW3ATsDGwPQBGsG3gaqBpQDHASiBdUFiwKACTIDiQN+BQ0GPANjAesFpwFVArAFOAWLBaYJhAK3BCEF3AU5A9cCggQvA3IGtQF+BrEGcQbEAxYMwwMjCAwHPwjCBpEDSgRwBIAGOQtAB+gFmgMpAzsJdwiBCf0D3grPB6wGPwkPA7wDnwdpBEUEPAPTBg4JnwNiBN4E0AJGBqMCYwOcBeQC/wGtBSoF8gXSCbQH0gkmCioFQQZQAhwEQQQzAkcE3QsYCH8FTwQdDSQGUwTZBuUEiwQTBH8HGQnXA/kHLANTBAEFdgRTAmQG5wJHA9cE+Q9ICYMFYgISA0YEqAIABYkFkAr5BpoI9wSQCSoIUAntCFIIzAT+BGgC+wQ5Cr8DuQd6CdgEURGaEBQJZQRzAk0EUwemBV4COgcnBT4FuwPlAjUIQg62BAQLkQRZB58IdAbNBroCHgXpBVQGkwW8BXMEZAaVBv8GrQvLBMIEbg50DdAIkwU5BgAE9AFHAigFXwefBFQBsguUEA8HOgWvBKEEygYNBO4BiARVB60J8wNjBb8EFgZVC9gFLQXjA84D1gWVBMsIRwVBBFYDrwOQAo8CGANMBOEBUQJIA4oCagL0AqgC8wI+Am0CtwIiAj0CPAMjA9EC7QGVAigE9gJsA8oEPQKfA2UCEwNwAvgDGQPhAT4ClQLZA/gBFwIfAqQBgwEpBNoB6AHwA/sB5QLQAXsBnwPwAjYC3wHOARgDOAL2ApECfwLrAfwB7wEZAp0BdgEnAsUBTwVhA+8BBwJMAcsB8wEcAu8BvAPXAWsBpgEJAmECcAJgAo4C+AEVAvwFqwEOA9sFqgG8AcgBuQERAZcCmAH4Ap8CagL4AV4DgQUXA9kCYAMSA3EFNAQHBLgEigaMBnAEZAkFBNwBbwIUAw8CnAO0ArMEOwQtA30FugdpCN0G4gOGB90FWgW8B5YDhwq0CnYESQajBAcDcAYoArME2ASaBVQCvQJXBX8EuALDA4YDjwNmA50CaAS6AhgDYgVzBPMHDQbWBQcFswRMBSwFVQSTB8kFSwf7B4wFagMtCQYKGAbNBtUFOwpFCjYCTwOzBM4DWQd9Ay0FsQlPB3wHfguEBnsHsASlBekGYgN1A30DXAVcBS8G8gM/BKQI/QTYBGQCzgXPBMEK/ASLBagIpAlFAgQHEgaIAwEDMgMUBBsG6QdrBDkEtQK/B4sEoALaBPAFlgQSCTEEfgUQA08DwghUBJQCtwYRBVMEXwXqA2ID7gOuAlkH4gPFA0YDTgPjA0AEswOPBHMCvwY5BU0EhwT3AwsCLwVoBCgDbQMFAu8GPwTaBc4FQwMGA2wBHAhzA0IFRQTPBCEEhgZxBUkG9QeqBAIFkgP3BwUDYwTHBd8ENgffBS4F7gKgBLgCsANsBEcDkgSfA8sE4QJdBN4DXgNQBPoDfwIKBiYE+gKdA9MD8AeiBA4FxQPNCW4FagdNBeEF4QQrA38ERAMLA/kEfwJsAnwGmgWyA/IFHQEaAhYFFATBAzACsQMSBZsCPQNoBEsGVAbiBmULkAnwDygFDg0nDmwCgwU2A24HMAX9CwUMDwRFCykGDgQlBLgDQgRyBSECEgWqBZgCtgZjA/UClQgwBZAEFwbwClYK1QUuBmQEKQUoBwsIVArGBq0DcwQxBBcEXwfpAmcEhAMOAkUCJQMaBI4FnQJ+A5cFngIKBD0IEwRVBuEDEQMiDGwDnQKtAHIHrwMoBM8AfgTQAc0A/wNjBs8D4QWAAtED3ANAAsQDFwUYAisEAAU1A6AD5QEYBb4GggCYATwBNwTYA3MCcgPMA6cDWwOcA8kCBQI0AhoDiwNqBK4CsAJgAxwFGAImBXEDQgOVBm0DQQNFA6sCAARaAjkDQQOPBBkDiAT/A8YDyAKLAt0D5QMlA80DQATZAm0EngQaAyED8QJmAvkDcAPLAjIBVgvkBKAEDgTfA+kC0gR9BK8CEAPoAy8DaAK/AroCuAX/AgAIhwTEAlUCfgKKAWoCpQLbAvsBHQLlAfYCeAEQAW8DOwHfAdQCfAGeAcoDygOsBDUA/QFeAacC1AGvA6kCPgKeAZsFhAFTA8IBHgM2AxMDcAEJBP4AjwGaApIDfAF8AXQB4QBmAbcAYwGYANcA/wAMAeUAJwGrAagBdQH3B30LOgGBAoYBYALDAjoCQAfWAmABtwKcAawCFgbMAlUD2QG3AtkExwLeAdMESQJXBUkDxAISBL0BogGwBN0CqAndBVYEXgOTA/kDNwa3A/MBuQZTBkkD+gE9A3cDbQoHBjYEiwPHBSgDPwKiARAGjgGtBTUJ4QLJA4YCTwLkAiYCqgOzAjUBegGaBHcDEwP0Am0D8ARDBRYDKwMNBMYBpwFDBEoF5gEEBiwEgAIWA2EEpQUQA3IHDAbdBPkDWwaxBOICswMFBpADlATlAp0EPQO6A+YCqQNlAhAEmAFOA8YCQwOqBCUFFwKAAkIEBwJhB08EPgNvAnkFqgRdBuIEaQMeBKsDKwQYBm0DkgJtBeIDAgWcBPEEpQbGA1YErQfWA9UD4AJOA9YD+AHwAq4CPwU1A1sD3ALOAhEDlgKOAy8DdQPpAxwDEgN5Ao8CTQN0A7AGSwZuApwEEwWABQMGdASZBe8EtAOKBiIDxAJ+B6IDqwPcB+QEEAOgAnoExwLqA5wGAwT0AmcCtAPPAwcF0QV7BNkBAgKZA20E5wKXAucDZwMYCXIEQwRnGiUErgMfBIYFLwMpCT8ECwQkBrsHDQMpCE8MRwbeAX0BQgQbCHIDOgqVBs4ENAgfBCIJtQdxAw0EFwilBpkLQwhqA34D6QtHBg0DcwGOBAkFmAdkBcADdAJxA3EDvwhfBocHewWKBcoDwQaPA38FLQWQBYwF5wP9CAwEFwZwApwDOAWtBZgLngvfAj8EzAOeBSQTFgHGAdIBhQHEATcDWwItAgICFgFcAk4CuQHbB4UBqwFkA0wEigSHAyYFqgG/BCQIiAKRAfYK7QTCAuEB/AEnBE8IoAJwA4sBIgMdA4QB3AHGAw0CWwLdBgQD3gIAA+cBeAKrA+8DuQJoA84BeAJRAncC6QGPAfkCPAJlA3EDfQLfAd0CiAHjAvYBGwOhBa8C3QGSAvwDswPdAwwEwALIA8sB9ALtA7oC6QEUA8cBcAT+ARACwgaMArYBCwI1AiADUgKdAagCMQV1A6ACPgRSAuEC/AJtAssBHAU6BAMDPAK5AtUCYwNgAyoFpgIABCAKFgb8B6kDIgcsA8oD/gIAA6kIggTABBcFoQVpBOgCWAJRBu8CHwu/CPUElgOYA4EH/QVGBjoF9wTmGIYGoRHlBOcPQgR7BtQE9QfTCHUGewKDC/4CfAioA04FpQM2AicFFAaDA9YF8wfbDq8DigTMEv8HtAkjHRoOCwq7Bm0DOgYbCJ8F4gNzBBEGfAXhA+8FiAMgA2YD8gKWBJEDgAaGB/EFowg0BiIE6ALlAu4CeAP/AwQC0AMsA/4DSAUMAyUENwOJAz8FAgNZAkAFYwOpBRED2AT/BMIB/QOaBIsDagMHArYCwgUbBIkE3wHKA3wEOgYXBQIEFwT6BFYCFwS6AdADIwfBAmwFqQIJA1QDqwRbAzkCvwNfAGgBMgK0A7AD5QIkA2ICqQGFAlIBqgHwAvIBdwJvAp4BMwO1At8B+gOZAqwBDAOQAcABfwIQAxQDiQHhAcwB4gH9AfkCewJLAf4B5gE9AqoD4gEAAlMDPQJAAT0B7QCqB7ABwgKHAukBawEDARABjwEOAYUBHgGaAnoBNAQbAewBLwFZAqUBbAHAARkCwgFYAR0C0gF6AbABbAGZAWIBfwGBAiAC+AHFAdQBUgF7AYEBaQFsAdwBUQJ8AVQBewGEAXQBXwEVAQEB/wFOApsBiAHdASMBJQEUAyQB8QGtAfMBTgEiAbwCVgE3AzkCTQFQApwBOAHbASQBJgEaA6ABBQKxASYB0AFFAdcA/gHLAl4BEwFnA6EBSwHwARwBIQEHA3MB3wCHAfMBHwF2ATcCrAHjApYCmAJ9AUIDkwF+AdUBHQEgAQcDpAFtA68ClwGFAVMBMwEYAWwCRwKXAbsBmQEhASQBDwMrAqgBTwMzArIBnwIMA2QBZgNGApcBbAEzAccBDwElAZ8CuAHKAeoBFwLAAX4BTwGCAYgBpwH6ATgBVQG7AY8BjAJ/AXECGAJ3AUkBOgFFAf0BSwHNAXsBngGJAZ0G9QFkAXkDVgNmA3UCdwVTBPoB5gUXA/0FygK2BDAF7AWmA4gGvwhuA3YDFgSvA7oG+wQKAmQCpAM7ArECngG8AxAEkAT1Ak0FswRpA5wE/AxZBHAF8QNyCv0EuAXzA2oDzwR6AnEDVwPuAfYCwAOEBKUCbALOA6IJJgiWBksHbQcQBS4EqgNQBOADPAPoAqgD9gMrA20DrgQLAk4DhwI7BHwFcAZKBCcFKQPLBTwGKAebA4UEiAVEBSUEYwB5AWcDiAfbBBkFAQijBUwG6QXfAy8GywU1BHAN6QMqA2oGHAp/BqIDvwNECRIESgkJBHkJ6QR+CZEGYAZeCRID3gRhBjwGeQagCb0EiwTNA0kEAwd0BJYG1wYmB4QIOgTsB5QC4gJsBJAF2gWOBJoIkQavBvQE4gVlAzgGHwWsAtMCqAOMBGsCMQRsBkUHfQWfA9oFAQnfCOAIeAaSBZIFRAlZBTUGJQY0BVIFUwVBAHQD4QT8A+kDfQPXBcEHbAPuCeMCLgfiBMIGhgM9Bd0K9gSIBNQGYwODBXwFmQbsCu8DagdOBVAJoAIiBvQFdwiEBLYCrQaaA4EHIwa3C/MHEgSHA/4DLgfRCPwGXQRnBKAEVAUsB5UFPwP7BDADXwK2BvoBKwRSBSIEBwcBBTMF5AIhBrAF3wM/ANEA0AIYBNACeAO7AyQImgyfBMECXAKzA0ICfgP2BNUCjgO8BdUDsQfnBbkFlAfcBaEC2wb6CowFRwj4AxUEpwWAAg4DxARPBLkFmgZGB2QFcgU9BeIDgATVB6kHqApzA6UFawPBA5wEnwevBO4GqAN+BnYCHQM5AHcBcQGSA8UCFgbcBOACngIdCH4E/wVnBCcGmAm+Br4F4gQ6BBMJxAZQBWEFrAJ3BfkCfwZqA2UHdARzBUQHRQmDCD8AnwLmBdoHaAWyAnsDagJEBZcEnwMEBn0F/QQPBYYEowNlAjgEKAecBBAFawVBBBAEqwbUBtwCGQSwAksEWwPOAXgKTAr9CnsGawM/BycGmgJfBCcIdwQBBGAEZgYVBXEMtgf5BAUGZgb0BZsFzQb0BHEGLAXfBXoFTweFCooE9BFgB64P2wWdBEAFWAJHASYFBAPrAioC0wKMBEEJvBb1C4oHaBghAwUKyATeBDcFGwg8B5QCmANLBU8CmwIrBEwDGwMdBcUCDgVPByQHcgXlBScKTQTnA88FrgUhBTEJ3gP4AzAJKgeaCIUGuQbeAn4GPgf0A1EGAwhdBtoEwwKKA6ADEgRiAnsDMAvUBTkMKAQDAzMEKgi3Ay4GMAQtBagG7woWBDAFBwilBGoCcQKwBOUCvgJJA+4EnQe8BZkGhQOMBK8E3wS/B9UFlQhSCXkL6wkUB2sDOAJrAUAL4wFYAVABjgUHARYEDQafAocI1AZDBmMDcQWGCAwFtAOwBIAGggnCA80IUQt1BjsHsgmqCdEHRQAWATgBQgFmAWkCqAJ/A5kEaQMeBSEFgAPhBOwEWgLDAQMFxQMwBMQCWgK8BDUBhAFiAhoCsgNdAnkDiAPlAaQDhwPOAoUEzQINA6oCQASLAscBoQKGAWwDBQOMBkUC1QJ4AuoC3QMiA0ADKwJjAtQBXQG2AbsD6QHFArkBzgFEBGsDqgNTAiADhwJvAzMCPwJJApkCsgIZAx0D4QJlA5gEWQLJAr0A2wDNAOIAhAIJAm4BsgJhAT4ClQM4AS0BXAF9AT8C4ABMAQMCgwEgAqkCQwJXAQsBbwHvAfYBdQHPAtMBWQH4AZUBlAJgAtMBogG/AU8BSwExAeQABAGpASkB0QGkARwB/wG+AYcBQQJFAZYBcAEHAvgA6QFSAYQBwgFmAeQBjAE/AtwBrAF2AVwBvQGLAc4BTAHlAd0BawFcAVkBkwFdASEBcAFRAeABjwFiATwB5gArAdUBBgGOAR4BdQF0ASUCHALAAWMBPwFtB2MBKgGpAl4BNwFwAQQBgAFwAQ4C6AOhAT4CuwGcAcUBjAFSAakBjQGGAVMBUALGAYcBXgFwASgBqQFwAWQBYAE3ARsB6AErAXwBiAG6AYQBrAGqAZMBygHZAXQBQgIWAqcBVgF/AUYBxgAzAdUBywNUAVoBIwFBAWIBgwEmAU4BBgGwAXYBewEyAkcBZgFMAZABWAF3AkUBWAHtATYBXwFLAbwBNQPOA58CGgTcAnUEuwLHAy0C4QLnAhYC2AKlAkIDCAOFAYsCaQIJB7gEUQqlAqcJRQVSBZYDcAJRAqMDfAIkAyYE6AKpAbIBbwLlAckDbQKvAz4EfQP8ATAC6QL5Ac8ByALOAboBkAF+AbEBtAE7ASQDcQPgAssCjwLmAesC0QIVAT0BpgL1AaoCGgPhAUsC5gQCA9EB5QH2AYUBZQEHArsBhgH2AhQDXgF3AVoChwMsCukEiwgRCxAK2wkjCEMHYQLeAYcCmwGzBuEEXQQ4BfUCNgZPCW0GSgv+BMIDdwTbA20C6gZ9AaICmwVPA0EDRAVCBcQDgQ2dAzkDQgfFCakEYQTTBsMGmQhzA6kGgwO7BbUEswYwBIIFbASzAtYD7wOrBTAEiwKoBJ8CxQUhAhwHjQZEBuECqAzoA7oH7wVxBkAAJgJRBLkDSQiAA7sK9AbPBAoGewVCBcQEHQO6BfwEiAT5BXoCjQVnCp4FmQLqAmEHpgbRBKsOfwn/AyoFagKkBJkJpAc/A/UHOgOiA+AHZQNkBY8HnATfA8oFcwcFBAgFZwbBBGkExwMCAkkFuAhnBWgGAgRkBrsHwQMLA00JswQnB54KmQP0An4DmwLwAScCIwUDBJcDBQVNC5cDOgVLAhUJ/wX9AxwGQACpAYwC3AKTBbUFyAIVAxoFDQUXBTgHYANRBwEIjQfXBf0BqwKeBLUGiwdwBCUE+ghBBJ8ExQQDBr0GigU5AScEowUxA/MD9wZiBFQH7QcxAyQEwwSnCmkGGAT9CMcD1QMnC5cEpAQ5BlYDQQBkAH4DzAI8B1EEUAfSBXYEtgSxB84EyAzSCTQMBAeUBFEITgPRBngHegnqCPAGGQQ3BSAFHATmBJED2ANPAg8FYAJEAzYGaAR0BZEC6wRXA/cFrQJnBX0JWAREBWYIqgSNA7QF9QgABEEA8wBGAg4CLwPLAWkCqgJRBAEENAQSBJ0GUQEAA5cCFQTZAmsFeAS/AlYDfQaWBNYC8gLBAYgCZQPBAlADmAk/BigCGARUA1wD2wNOA0gDFgKyAhsDNQJeBBMEVwJUBGMDLALtBHACLAODAmkCtAGFAnQDzQKZAkkDLwKvBRMDNARnA+MCzwIYAmcCBga7AicCVAL/ATcC9AILA6sBEwR9AiQDawN7AwsFggQPAyUCagJBAPYAZQKGAb8BGwLPAskCPgEqAqUBBQJZAucBLQJaAvICLgJ3AuABhAHbAd4BIQKCASUBawGxAQMDtAJmAjYCLQIaAYMCyAEzBMAC3wICAtMCSgIeAdcAWgHVAPQBRAKvAZQBigHwAHUCnwHgAcADKQJbAnUBQQBGAlsC3AINByoEFQFQBEkDfQVOA/AEdgRfBIYDHwVFBygE0ASgAr4GmQRmB8YFswSKBfMDDAShA4YEcAT3BSMDxgS4BcIC9gJFAGkCEQY2CecFmgPtBFII3wXOBwkGXQYXBFkDjw+8Bv4IwwV+A58KugcMBJkEcgZOBXsLFAQfBroGZgbyBKYFtgZ1BvgICwMDBhUGvgxsAZkBSgNTApQCmQUTA7MIvAQTBL0OqAjCAnQFKAW7CJEDkAO/AkgCtwTIBAYDewNNA9QEwwOIBpQDFwQqBJIEywKhCXwBOwWAAS0HeAdoCQADEQKjAz8IHAwFB1YD8wRGC/MJDgn0BtICmAf7A88DXQPtBroPlAq2Ch4FgxN6BK8HPAZGA7oDwQWsCSoCiArgA0sMpwpkB0IJBQciBV0GigMXAcAD+gEJA5IC0wPMA9ABZQO6Ab4CiQJ/ASADEQPNBO4CMwIDA9kBHwIYBMEBtwF/ASgD7ALgAncC+wIBAt8BpQLmAfUBqARbAysELAT3AU0CxQLzAS4DWATRAN4A7wD6AC0B+QA1AVMBGQHlAHsBaAFvAakCjwEQA8wBlQESAnsBiAHKAREDdwLTAtcBkQEjA0kDiQLLAdoByAGvAQ8CNQKpAo0C6QGKAjACkgIXAvcCagJtAgoC3AGBAhACmAJgA4wBagHRAQMCMwKpAR0DYQJbAMEArgDZAPMA6QAKAbwAHgERAT4BcQGAAasB4wEtBJsBKAMeAsUC8gZSAmYCpgIcAgYCMAJzAqgCVgJFAroC1AFKAlICbwKiAq0DjAF6Au8B0gKZAkcDvgLmAooDrgMJAgABmAFDARABJgH2ABkBzAB3AVwBTQFEAT4BNgEuAYMBRwHIAWsBYAFaAVIBLwgwATkB6gRQA+oDKgOQBEYFswkMAS0BiAGZAQ4BPAGXAToBagE2AUgBIAH+AQYBgAEWATcBQwHfALMC/wD5AF8BgwHEAKMBqgFOAeYASAHHAXACcwJAAoQBPgJlA7gCawOaAekB0AKfAecBzAFFAWAC4AHvAioCRgFeAhIB4AKtAgAC0ALlAtUBWwFmA4sCZQEOA1oCSwKYAxoCKAGJAqIBuwLoAtsBvgFwArQBCANyAfQBVQJmAZMBgAELAooAwADhAMUAjAGeAdcBMAGeAmIBDQK9AXEBDALBAWEBvwFgAVsBRAFfAbcBXgFGAl8BAQEPAmEBxAJhAWIBYAH8BWAB0AJgAWMCXwFdAmQBNwNkAS4CuAFlAZoBZAGvAGUBNQFnAZIBZgFgA2UBMQNlAYABZwHnAWYBGAFnAaUAZQFIAVkBgQFZAS0BWQFjAVkB5QFYAV0CWQEUAvoAHAHPACMBFwEMARYBBwIWAjgB+ADpAOwALwH0AGwBtAHUAZ4BOwFYAZQAWQE1AbMBAQHkAd4AxgCxAM0A0QBLAecAEgH0AKIA8ADnAAcB9gHwAO8A6wCaAeEBEwPoAHIB5gHaAZgBTAGlAVEBVQHYAR8BDgLIAuMCeQI/AQcCYQLGADEBzAGqAjYCiQGVAjcClAGCAcEB9wDkAEYBXAHUAeUBawFZAWcCogGiAXsBnQG9AbcBBgL7AO8ATgGIAfQCYgMZA2QL2QL3AwkG2wXJBYsMhQNxCBkKqgcXBUgJ8gNvBNQHBQ1NCEIFMQQ8BL8LEwbID9oHQwcaBTYHkwbVCNwFigRJDAoNnwc5BlcK7gYhCIsFxwJnA6sEiQWSBZsCggISETgDxA52BAYEuwReBxUN3QdCC6AIEwtZBvsDYQgmBKUFJwTbBYIEZgSgB1cEdge0BowQGwWnBDoQFwSTBdsENAe3B30TsQftDV8GbwOJAngC+gMiB88J9wSuA6IEiwORBf8FOgNTC68DhwasAtgCRQf/BDQDJAZzBmAFDAbjBd0DcAMLCPkEOwV3BkYGawV7BvMC6QQoBHIEQwWxBIAG1gXRA58JVgR+BB0EdwKkBvACNgb5AzUCHg00CrYFDAnxAzEM1Qa8BGUC4gQcCz8H1QRMBMwJigfNBsYIywPzDsUEnAniB30GywKIBOcFyQOKBR8DYgJgBP4EJgPLAogDQAN5AiEFtgOiBPQCeQX+BNUDeQS8BM0CjAKdAm8E7QQoBIUDcQGoAYwBZwFFAQ0BcAMiAWwBcgEXAXMBOQEyAUsCVwHfA9QAZQI4ARoBTgKKAT8CWQGUAS4BcQLWAR4CeQHhAiADPgIBAlkBnAFyAaQDhwH+AoEDYwQoBJgBewL2AdkDZQM/AjUFfgGAAKUAUQGzAckBUgIqBo4B+gKZAkYCgALmAbUCcgE3AsMDZgJXA7IBPgHVAOEAAQN6AzgBVwEpATAByQApAbICywHlAbgBigFIAWQB7gBgAScC/AFxAecBTAFjAf0BYAHaAZwBGwGgAXMBdgFAAfYDPAErAckAqgF7AYQBuwMYAU0BFAK9APAAUwHPAIEBVgFsAc0A/wH8AUIB7gFzArUB+gGcA6ACRwLZARcCeQETAuwBnAKkAbUCtwJxA4EDuAMoBMQB8QG4BR0CzQFkBlcBaAJIAuEB7gOXATkBlwLdAt4BUwKbAW8BnwMJAbQDOQLBA7QC3QLoBG8D+wKhAkkCBAMwBM4CcgNyBLwDFQM8A00EJASFAqcDPgTLArADcQJiAg8ExAWKBKwDlQLTBIcE2gAjAZ8B7QG8AV4CvgE2AgsDzQLZAoMBxwGMAzoEGQOdA40CFgOFIN8AtQDOAPgADQFHAQEBQAG6AacBtQGiAfAATAEwAbEBGAHzACQBRwGHABYBMwHKAXwB+AA+AQQB8wBJAT0VrQDZABoBNQHeAD4CvgEtAT8BBAEtAakBoQHLAZMBKwH3AQQCcQETAQwDnwHmAP0AyQNyAckBZgL7ARcChwEGAfQAfAEfApgAlwFXAu4BPQEjAqUBtAFPAacBKAFfAfcAbgGtAWgBBQEsAbEBpgFCAUoBtAH4ADYBYQLtAfgBjAJ4AmoDAARkApoCyAKYAuACAwM3A08C+gLsAXsDpAIIA+kBWwKQAdoDNgILBZgCDgKqArgBWwIsA7kDigIPA8gDIAEqARIBAwEZAc0ARwFfAUcBTgEmAQUB4wCpAYQBRAF3AbgBhgHcAYMB/wCYAYMBoQH2AFQDjQEbAgYC5QGcASABjAFPAbwBiwFuAtkBiwHVAXABcwL0AYsBUgKMASUCjAHaAf0AKAGaAeQAGwGPAfkAJwFmATkBWwG8AVwBIAJaAd8AqwEmAuEB5wGCAeIANAHrASsBuwDGATIBcQHcAR4B+QDwALUAywGxAdYDtwStAkMF8gAKARIBBQH5AD8B8wA6Af0ADAI5AXEBQQEYAW4B9wGFAWABgQE1AdsA2wDgAEcB4AGmAQECMQHSAYIBqgEEAWkBowGuAZYByQAmAXIB1QJEASQCQgH/AKIB0AK2APMATQGAAekA9AAQAT4BowD4ANkA4wAGAfQAxwCfAGcBFwFeARcBDgEeAUQByQFCAXEBGQHeAOoA6QDKAIEBQQGIAbUAFwFNAk4BRgGeAdEArAEmAWYBOgE7AWUBPQFHAQ4B3wAfAR8BLAH8AFgBGwHZAAkBCQFCAbgB1gBHAVgBZgF4Ac8AQAGSAUQCGwFAAQoBBwGwASkCxwFxAV4BSQHSACQBMwFaATEBSwFwAY4B2wL2AE0C7gHMAcMA2QHJATQByABaAcwB/AF9AoMCaAKgAVEC6gFMAdgAKAFLAVoBEALAAf0CVQGmARgDlAFkAi0CtwGlAlQB+gE3AUIBHQFwAUIB8AKkAeUBmQHMATkB3QB1ATQBagE5AQABEgF4ASoBWQKkAV0BhQFxA2UBDgETAW0BEAEnAWkCLAOXA+MFiAVrAU4BJQE3AesAmAHmALkBhgEvAfkAJgFTAfgAxwG4ATwBGAI7ASQBbAFTAVkB+QDqAE0B0gD8ASwBCAECAScBEAENAR4CCwFYAQQB/QBdAWIB7wAXAWABBwFoAUQBbAEXAb0A6QAUAaIBcAFEAQwB4gBkARkBPAE2AScB9gBbAqUBrQG7AW4BgQEiAeIBBwF8AYoA1gAJAfUA4gHNAQ4B9wEqAnYBfgGMASwCXQGeBKoD1QFRAqUBqAHYAfcBaQQFAhUCZAHCAScCPwH3AB4BNwHIAI0BxAFRAVUBNAHyAA8BEgErAYYAigHbAB4BTQNSAVsCDAEXAeQA9wADAQ8BLAECAWwBGwE0ATMBBgE0AlMD+wDrAO8AXwELATcBCAFAAVkBAwFDAaUB+gBRAToBNQELARUBQwEDAowB7ACBAOIATgG3AdIBbQFNAUgBWAFTAXkBZQE7ATgBFwFIATIBOwEPAQIBwwAaAR8CYwEdA10BnwGEAVoBDwEWAXkBRAHOAAwBFQG9AG8B3QA7AUwB/AElAcUA6gCRAVkBZwGvAdcCggGIBOoB6ABXA7gFQAUOA6IGagFnAR8BRwHrAFUCuwGtAeoA7AD8AMoA6wBMATIBYwHpAVIBvwGSALYAZgFYAikChQFLAX0BwQAfAbEADQEvARkBUQG2ARABjgECAn0ATAHVAygBYAFfAVoBRQHrAE4BLQHcAEQCzAGkAbgBigHIAJ4BWwE+AoMBXgGiAd0AsAEFAQMBCAEBAQ4B/gAKAZcBYwGXAU4BegGMApcCUwG3AVQBewGSAeoArgAPAVoBagEQAZ0BzwG1AW8B3gC2ANcBHQJOAQ==';const AYW=b64u(IX_W,Uint16Array),BISW=AYW[0];
+const QK=s=>'qari-'+String(s).padStart(3,'0');
+function qState(){if(!S.qari)S.qari={name:'Shaykh Maher Al-Muaiqly',files:{},times:{}};return S.qari}
+const qLinked=s=>!!(S.qari&&S.qari.files&&S.qari.files[s]);
+const qHasAny=()=>!!(S.qari&&Object.keys(S.qari.files||{}).length);
+function surahFromName(n){const b=String(n).replace(/\.[a-z0-9]+$/i,'').replace(/\d+\s*kbps/ig,' ').replace(/\d+\s*khz/ig,' ');const m=b.match(/\d{1,3}/g);if(!m)return null;
+  const t=m.filter(x=>x.length===3),v=+(t.length?t[t.length-1]:m[m.length-1]);return v>=1&&v<=114?v:null}
+let qBusy=null,qMsg='',qPct=0;
+function qProg(msg,f){qMsg=msg;qPct=f;const a=$('#qpm');if(a)a.textContent=msg;const b=$('#qpb');if(b)b.style.width=Math.round(f*100)+'%';if(!a&&tab!=='audio')renderDock()}
+async function linkQari(files){
+  const q=qState(),list=[...files].map(f=>({f,s:surahFromName(f.name)})).filter(x=>x.s).sort((a,b)=>a.s-b.s),skip=files.length-list.length;
+  if(!list.length){toast('No surah numbers found in those file names.');return}
+  qBusy='link';let n=0;
+  for(const {f,s} of list){qProg(`Copying ${n+1} of ${list.length}: ${SN[s-1]}`,n/list.length);
+    try{await iput('audio:'+QK(s),f)}catch(e){toast('Phone storage is full. '+n+' surahs were linked.');break}
+    const prev=(q.prev||{})[s]||q.files[s];if(!(prev&&prev.name===f.name&&prev.size===f.size)){delete q.times[s];await idel('qenergy:'+s)}
+    q.files[s]={name:f.name,size:f.size};n++}
+  try{navigator.storage&&navigator.storage.persist&&await navigator.storage.persist()}catch(e){}
+  qBusy=null;qMsg='';save();toast(n+' surah'+(n===1?'':'s')+' linked'+(skip?' · '+skip+' file'+(skip===1?'':'s')+' skipped':''));render();renderDock();
+}
+$('#qIn').addEventListener('change',e=>{const f=[...e.target.files];e.target.value='';if(f.length)linkQari(f)});
+/* MP3 reading */
+const MBR=[[0,32,40,48,56,64,80,96,112,128,160,192,224,256,320],[0,8,16,24,32,40,48,56,64,80,96,112,128,144,160]],MSR={3:[44100,48000,32000],2:[22050,24000,16000],0:[11025,12000,8000]};
+function mhdr(u,i){if(u[i]!==0xFF||(u[i+1]&0xE0)!==0xE0)return null;const v=(u[i+1]>>3)&3,l=(u[i+1]>>1)&3,bi=u[i+2]>>4,si=(u[i+2]>>2)&3,pad=(u[i+2]>>1)&1;
+  if(v===1||l!==1||bi===0||bi===15||si===3)return null;const br=(v===3?MBR[0]:MBR[1])[bi]*1000,sr=MSR[v][si],spf=v===3?1152:576;return {v,br,sr,len:Math.floor(spf/8*br/sr)+pad}}
+const rdb=async(b,x,y)=>new Uint8Array(await b.slice(x,y).arrayBuffer());
+function msync(u,from,sr){for(let i=from;i<u.length-4;i++){const a=mhdr(u,i);if(a&&(!sr||a.sr===sr)&&i+a.len+4<u.length&&mhdr(u,i+a.len))return [i,a]}return [-1,null]}
+async function mp3Energy(blob,onp){
+  const h=await rdb(blob,0,10);let p=0;
+  if(h[0]===0x49&&h[1]===0x44&&h[2]===0x33){p=10+((h[6]&127)<<21|(h[7]&127)<<14|(h[8]&127)<<7|(h[9]&127));if(h[5]&0x10)p+=10}
+  const u=await rdb(blob,p,p+131072);const [f0,H]=msync(u,0,0);if(f0<0)throw new Error('This file is not an MP3 the app can read.');
+  const start=p+f0,FR=0.02,CH=640*1024,total=blob.size-start,E=[],spf=H.v===3?1152:576;
+  const Ctx=window.OfflineAudioContext||window.webkitOfflineAudioContext,ctx=new Ctx(1,1,8000);
+  let pos=start,tAcc=0;
+  while(pos<blob.size-4){
+    const buf=await rdb(blob,pos,Math.min(blob.size,pos+CH+8192));
+    // walk whole frames: exact duration = frames x samples-per-frame / rate (works for CBR and VBR)
+    let i=0,nf=0;
+    while(i+4<=buf.length){const f=mhdr(buf,i);if(f&&f.sr===H.sr&&i+f.len<=buf.length){i+=f.len;nf++;if(i>=CH&&pos+CH<blob.size)break}else if(f&&i+f.len>buf.length)break;else i++}
+    if(i===0)break;
+    const segDur=nf*spf/H.sr,i0=Math.round(tAcc/FR),n=Math.round((tAcc+segDur)/FR)-i0;
+    let ab=null;try{ab=await ctx.decodeAudioData(buf.slice(0,i).buffer)}catch(e){}
+    if(ab&&ab.length){const d=ab.getChannelData(0),L=ab.length;
+      for(let k=0;k<n;k++){const a=Math.floor(k/n*L),b=Math.max(a+1,Math.floor((k+1)/n*L));let s2=0;for(let j=a;j<b&&j<L;j++)s2+=d[j]*d[j];E[i0+k]=Math.sqrt(s2/(b-a))}}
+    else for(let k=0;k<n;k++)E[i0+k]=E[i0+k-1]||0;
+    tAcc+=segDur;pos+=i;onp&&onp(Math.min(1,(pos-start)/total));
+    await new Promise(r=>setTimeout(r,0));
+  }
+  const out=new Float32Array(E.length);for(let i=0;i<E.length;i++)out[i]=E[i]||0;
+  return {E:out,fr:FR,dur:tAcc};
+}
+/* Matching pauses to ayat */
+function qIntroNames(s,n){return (s===1||s===9)?(n?["Ta'awwudh"]:[]):(n===0?[]:n===1?['Bismillah']:["Ta'awwudh",'Bismillah'])}
+function qWeights(s,n){const w=qIntroNames(s,n).map(x=>x==='Bismillah'?BISW:BISW*1.15);for(let a=1;a<=AY[s-1];a++)w.push(AYW[gid(s,a)-1]);return w}
+function alignAyat(E,fr,w,thr0){
+  const n=E.length,sm=new Float32Array(n);
+  for(let i=0;i<n;i++){let t=0,c=0;for(let j=Math.max(0,i-2);j<=Math.min(n-1,i+2);j++){t+=20*Math.log10(E[j]+1e-7);c++}sm[i]=t/c}
+  const srt=Array.from(sm).sort((a,b)=>a-b),pct=q=>srt[Math.min(n-1,Math.floor(q*n))],lo=pct(.05),hi=pct(.95),thr=lo+(hi-lo)*(thr0||.3);
+  let fs=-1,le=-1;for(let i=0;i<n;i++)if(sm[i]>=thr){if(fs<0)fs=i;le=i}
+  if(fs<0)return null;
+  const C=[];let st=-1;for(let i=fs;i<=le;i++){const q=sm[i]<thr;if(q&&st<0)st=i;if(!q&&st>=0){const len=(i-st)*fr;if(len>=0.1)C.push({a:st*fr,b:i*fr,len});st=-1}}
+  const start=fs*fr,end=(le+1)*fr,K=w.length-1,Wt=w.reduce((a,b)=>a+b,0);
+  if(K<=0)return {cuts:[],start,end,cost:0};
+  if(C.length<K)return null;
+  const M=C.length,B=C.map(c=>c.b),A=C.map(c=>c.a),ALPHA=4,BETA=2.2,rew=j=>BETA*Math.min(C[j].len,2.5);
+  const lb=(arr,x)=>{let l=0,h=arr.length;while(l<h){const m=(l+h)>>1;if(arr[m]<x)l=m+1;else h=m}return l};
+  function run(rate){
+    const sc=(d,wk)=>{const x=Math.log(Math.max(d,.15)/(wk*rate));return ALPHA*x*x};
+    let prev=new Float64Array(M).fill(Infinity);const back=[];
+    for(let j=0;j<M;j++){const d=A[j]-start,ex=w[0]*rate;if(d>=.25*ex&&d<=4*ex)prev[j]=sc(d,w[0])-rew(j)}
+    back.push(null);
+    for(let k=1;k<K;k++){const cur=new Float64Array(M).fill(Infinity),bk=new Int32Array(M).fill(-1),ex=w[k]*rate;
+      for(let j=k;j<M;j++){const lo2=A[j]-4*ex,hi2=A[j]-.25*ex;let i0=lb(B,lo2);
+        for(let i=i0;i<j&&B[i]<=hi2;i++){if(prev[i]===Infinity)continue;const v=prev[i]+sc(A[j]-B[i],w[k]);if(v<cur[j]){cur[j]=v;bk[j]=i}}
+        if(bk[j]>=0)cur[j]-=rew(j)}
+      prev=cur;back.push(bk)}
+    let best=Infinity,bj=-1;for(let j=0;j<M;j++){if(prev[j]===Infinity)continue;const v=prev[j]+sc(end-B[j],w[K]);if(v<best){best=v;bj=j}}
+    if(bj<0)return null;
+    const idx=[bj];for(let k=K-1;k>=1;k--)idx.unshift(back[k][idx[0]]);
+    return {cuts:idx.map(j=>({a:C[j].a,b:C[j].b})),cost:best};
+  }
+  const tk=C.map(c=>c.len).sort((a,b)=>b-a).slice(0,K).reduce((a,b)=>a+b,0);
+  let rate=Math.max(.001,(end-start-tk)/Wt),res=null;
+  for(let it=0;it<3;it++){let r=run(rate);
+    if(!r){for(const f of [.7,1.4,.5,2]){r=run(rate*f);if(r)break}}
+    if(!r)break;res=r;
+    const ds=[];let t0=start;r.cuts.forEach((c,k)=>{ds.push((c.a-t0)/(w[k]*rate));t0=c.b});ds.push((end-t0)/(w[K]*rate));ds.sort((a,b)=>a-b);
+    const f=ds[ds.length>>1];if(Math.abs(f-1)<.01)break;rate*=f}
+  if(!res)return null;
+  return {cuts:res.cuts,start,end,cost:res.cost/(K+1)};
+}
+function qAlign(s,E,fr,thr,forceIntro){
+  const opts=forceIntro!=null?[forceIntro]:(s===1||s===9?[0,1]:[1,2,0]);let best=null;
+  for(const n of opts){const r=alignAyat(E,fr,qWeights(s,n),thr);if(!r)continue;const pen=(s===1||s===9)?(n?0.4:0):(n===1?0:0.4);
+    if(!best||r.cost+pen<best.score)best={...r,intro:n,score:r.cost+pen}}
+  return best;
+}
+const r2=x=>Math.round(x*100)/100;
+function qSave(s,res,thr){qState().times[s]={intro:res.intro,start:r2(res.start),end:r2(res.end),cuts:res.cuts.flatMap(c=>[r2(c.a),r2(c.b)]),thr:thr||.3,checked:false}}
+function qSegs(s){const T=S.qari.times[s],K=T.cuts.length/2,out=[];let t0=T.start;
+  for(let k=0;k<=K;k++){const t1=k<K?T.cuts[2*k]:T.end;out.push([Math.max(0,t0-.12),t1+.22]);if(k<K)t0=T.cuts[2*k+1]}return out}
+function qAy(s,a){const T=S.qari.times[s],i=qIntroNames(s,T.intro).length+a-1;return qSegs(s)[i]}
+async function qPrepare(s,quiet){
+  if(S.qari&&S.qari.times&&S.qari.times[s])return true;
+  if(!qLinked(s)){toast(SN[s-1]+' is not linked yet. Link the recitation folder in Audio.');return false}
+  if(qBusy){toast('Please wait: still working on '+(typeof qBusy==='number'?SN[qBusy-1]:'the files')+'.');return false}
+  qBusy=s;qProg('Finding the ayat in '+SN[s-1]+'… 0%',0);renderDock();
+  try{
+    let E=await iget('qenergy:'+s),fr=.02;
+    if(!E){const blob=await iget('audio:'+QK(s));if(!blob)throw new Error('The audio file is missing. Link the folder again.');
+      const r=await mp3Energy(blob,f=>qProg('Finding the ayat in '+SN[s-1]+'… '+Math.round(f*100)+'%',f));E=r.E;fr=r.fr;await iput('qenergy:'+s,E).catch(()=>{})}
+    const res=qAlign(s,E instanceof Float32Array?E:new Float32Array(E),fr,S.settings.qThr||.3);
+    if(!res)throw new Error('Could not find the ayah pauses in this file.');
+    qSave(s,res,S.settings.qThr||.3);save();if(!quiet)toast(SN[s-1]+': ayah timings ready');return true;
+  }catch(e){toast(e.message||'Could not read this file.');return false}
+  finally{qBusy=null;qMsg='';renderDock();if(tab==='audio'&&!review)render()}
+}
+async function qPrepareAll(){const todo=Object.keys(qState().files).map(Number).filter(s=>!S.qari.times[s]).sort((a,b)=>a-b);
+  if(!todo.length){toast('All linked surahs already have timings.');return}
+  keepAwake(true);let n=0;for(const s of todo){if(!await qPrepare(s,true))break;n++;if(tab==='audio'&&!review)render()}keepAwake(false);toast(n+' surah'+(n===1?'':'s')+' prepared')}
+/* Playback queue: items {key,t0,t1,label,rep} */
+async function playItems(items,label){
+  if(!items.length)return;player={id:null,key:player.key,url:player.url,a:null,b:null,left:0,loop:false,q:null,qq:{items,i:0,label,all:S.settings.qAll||1}};await qqStart(0)}
+async function qqStart(i){const Q=player.qq;if(!Q)return;const it=Q.items[i];Q.i=i;
+  if(!await loadKey(it.key)){player.qq=null;renderDock();return}
+  player.a=it.t0;player.b=it.t1>=1e8?null:it.t1;player.left=it.rep||1;au.currentTime=it.t0;au.play().catch(()=>{});renderDock()}
+function qqStep(){const Q=player.qq;if(!Q)return;
+  if(player.loop||player.left>1){if(!player.loop)player.left--;au.currentTime=player.a||0;au.play().catch(()=>{});return}
+  if(Q.i+1<Q.items.length){qqStart(Q.i+1);return}
+  if(Q.all>1){Q.all--;qqStart(0);return}
+  au.pause();Q.done=true;renderDock()}
+au.addEventListener('ended',()=>{if(player.qq&&!player.qq.done)qqStep()});
+async function qItemsFor(g0,g1,label){
+  const each=S.settings.qEach||1,items=[];let g=g0;
+  const miss=[];
+  while(g<=g1){const [s,a]=sa(g),last=Math.min(SST[s],g1),[,a2]=sa(last);
+    if(!qLinked(s)){miss.push(SN[s-1]);g=last+1;continue}
+    if(!await qPrepare(s))return null;
+    const intro=a===1?qIntroNames(s,S.qari.times[s].intro).length:0,segs=qSegs(s);
+    if(each===1){items.push({key:QK(s),t0:segs[a===1?0:intro+a-1][0],t1:segs[qIntroNames(s,S.qari.times[s].intro).length+a2-1][1],label})}
+    else{const ni=qIntroNames(s,S.qari.times[s].intro).length;for(let x=a;x<=a2;x++){const sg=segs[ni+x-1];items.push({key:QK(s),t0:(x===1?segs[0][0]:sg[0]),t1:sg[1],label:SN[s-1]+' '+x,rep:each})}}
+    g=last+1}
+  if(miss.length)toast((items.length?'Skipping ':'Not linked yet: ')+miss.join(', '));
+  return items}
+async function qPlay(g0,g1,label){const it=await qItemsFor(g0,g1,label);if(it)await playItems(it,label)}
+const qPlaySurah=s=>qPlay(gid(s,1),SST[s],'Shaykh Maher · '+SN[s-1]);
+const qPlayAyah=(s,a)=>qPlay(gid(s,a),gid(s,a),'Shaykh Maher · '+SN[s-1]+' '+a);
+const qPlayRuku=i=>{const g=RUKU[i],e=(RUKU[i+1]||6237)-1,[s]=sa(g);return qPlay(g,Math.min(e,SST[s]),'Shaykh Maher · '+SN[s-1]+' ruku '+(rukusOf(s).find(r=>r.i===i)||{}).n)};
+function myClip(s,a){return S.recs.filter(r=>r.kind==='ayah'&&r.surah===s&&r.ayah===a).sort((x,y)=>y.created-x.created)[0]}
+async function qCompare(s,a){const c=myClip(s,a);if(!c){toast('You have no recording of this ayah yet.');return}if(!await qPrepare(s))return;
+  const [t0,t1]=qAy(s,a);await playItems([{key:QK(s),t0,t1,label:'Shaykh Maher · '+SN[s-1]+' '+a},{key:c.src||c.id,t0:c.src?c.t0:0,t1:c.src?c.t1:1e9,label:'You · '+SN[s-1]+' '+a}],'Compare · '+SN[s-1]+' '+a)}
+function qPageHTML(p){
+  const r=layoutOk()&&pageRange(p);if(!r)return '';
+  let h='<h2>Recitation</h2>';
+  if(!qHasAny())return h+'<p class="note" style="margin:0">Link Shaykh Maher\'s recitation in the Audio tab to listen to this page.</p>';
+  const ays=[];for(let g=r[0];g<=r[1];g++)ays.push(sa(g));
+  const miss=[...new Set(ays.map(x=>x[0]))].filter(s=>!qLinked(s));
+  h+=`<div class="row"><button class="primary grow" data-qpage="${p}" ${miss.length===new Set(ays.map(x=>x[0])).size?'disabled':''}>▶ Listen to page ${p}</button><span class="note">Repeat ${S.settings.qEach||1}× each</span></div>`;
+  if(miss.length)h+=`<p class="note" style="margin:6px 0 0">${miss.map(s=>SN[s-1]).join(', ')} not linked.</p>`;
+  h+=`<div class="qchips">${ays.map(([s,a])=>`<button data-qay="${s}:${a}" ${qLinked(s)?'':'disabled'} aria-label="Listen to ${esc(SN[s-1])} ${a}">▶ ${ays.some(x=>x[0]!==s)?s+':':''}${a}</button>${myClip(s,a)?`<button data-qcmp="${s}:${a}" aria-label="Compare ${esc(SN[s-1])} ${a} with my recording">⇄ ${a}</button>`:''}`).join('')}</div>
+   <p class="note" style="margin:8px 0 0">▶ plays one ayah. ⇄ plays Shaykh Maher, then your own recording of that ayah.</p>`;
+  return h}
+function qCardHTML(){
+  const q=qState(),linked=Object.keys(q.files).length,timed=Object.keys(q.times).filter(s=>q.files[s]).length,mb=Object.values(q.files).reduce((n,f)=>n+(f.size||0),0)/1048576;
+  return `<section class="card"><h2>Recitation · ${esc(q.name)}</h2>
+   <div class="stats"><div class="stat"><b>${linked}</b><span>of 114 linked</span></div><div class="stat"><b>${timed}</b><span>with timings</span></div><div class="stat"><b>${Math.round(mb)}</b><span>MB</span></div></div>
+   ${qBusy?`<p class="note" id="qpm" style="margin:10px 0 0">${esc(qMsg)}</p><div class="qprog"><i id="qpb" style="width:${Math.round(qPct*100)}%"></i></div>`:''}
+   <button class="primary" data-act="qLink" style="width:100%;margin-top:12px" ${qBusy?'disabled':''}>${linked?'Link more files':'Link recitation folder'}</button>
+   <p class="note" style="margin:8px 0 0">In the file picker open <b>Internal storage › Tilawat Mahir Al Muaqqili</b>, tap <b>⋮ › Select all</b>, then <b>Done</b>. The files are copied into the app so they play offline. Surah numbers are read from the file names.</p>
+   ${linked?`<div class="grid2" style="margin-top:6px"><div><label class="f" for="qEach">Repeat each ayah</label><select id="qEach">${[1,2,3,5,7,10,20].map(n=>`<option ${(S.settings.qEach||1)==n?'selected':''}>${n}</option>`).join('')}</select></div>
+     <div><label class="f" for="qAll">Then repeat all</label><select id="qAll">${[1,2,3,5,10].map(n=>`<option ${(S.settings.qAll||1)==n?'selected':''}>${n}</option>`).join('')}</select></div></div>
+    <div class="row" style="margin-top:12px"><button class="grow" data-act="qAll" ${qBusy||timed===linked?'disabled':''}>Prepare all timings</button></div>
+    <label class="f" for="qChk">Check the ayah timings of a surah</label><div class="row"><select id="qChk" class="grow" style="width:auto">${Object.keys(q.files).map(Number).sort((a,b)=>a-b).map(s=>`<option value="${s}">${s} · ${esc(SN[s-1])}${q.times[s]?(q.times[s].checked?' ✓':''):' (not prepared)'}</option>`).join('')}</select><button data-act="qCheck" ${qBusy?'disabled':''}>Check</button></div>
+    <p class="note" style="margin:8px 0 0">Timings are worked out the first time you play a surah, by matching Shaykh Maher's pauses to each ayah's length. Check a surah to listen to each ayah and fix any cut.</p>
+    <button class="small danger" data-act="qUnlink" style="margin-top:10px">Remove linked recitation from the app</button>`:''}</section>`}
+async function openQariReview(s){
+  if(!await qPrepare(s))return;const E=await iget('qenergy:'+s);if(!E){toast('The pause data is missing. Link the file again.');return}
+  const T=S.qari.times[s],c=[];for(let k=0;k<T.cuts.length;k+=2)c.push({a:T.cuts[k],b:T.cuts[k+1]});
+  review={kind:'qari',id:QK(s),E:E instanceof Float32Array?E:new Float32Array(E),fr:.02,surah:s,startAyah:1,intro:T.intro,minPause:.8,thr:T.thr||.3,dropped:new Set(),cols:null,cuts:c,start:T.start,end:T.end};
+  player={id:null,key:player.key,url:player.url,a:null,b:null,left:0,loop:false,q:null};await loadKey(QK(s));au.pause();tab='audio';go('audio')}
+
 /* ---------- Index: surah, para, page ---------- */
 let ixTab='surah',ixOpen=null,ixQ='';
 function ixParse(q){q=q.trim().toLowerCase();if(!q)return null;let m;
@@ -1061,13 +1263,14 @@ function vIndex(){
   const ok=layoutOk();
   const surahRow=i=>{const s=i+1,p=ok?ayPage(s,1):'',jA=ok?paraOf(gid(s,1)):'',jB=ok?paraOf(SST[s]):'';const open=ixOpen===s;
     return `<button class="ixrow" data-ixs="${s}" aria-expanded="${open}"><span class="ixnum">${s}</span><span style="min-width:0"><span class="ixar">${esc(SAR[i])}</span><br><b>${esc(SN[i])}</b> <span class="ixmeta">· ${AY[i]} ayat · ${(rukusOf(s)).length} ruku${rukusOf(s).length>1?'s':''}${ok?` · para ${jA}${jB!==jA?'–'+jB:''}`:''}</span></span><span class="ixpg">${ok?'p '+p:''}<br><span class="ixmeta">${open?'▲':'▼'}</span></span></button>
-     ${open?`<div class="ixpanel"><div class="row"><button class="small primary" data-goay="${s}:1">Open at ayah 1</button><span class="note">Ayah</span><input id="ixA" class="ayahin" type="number" inputmode="numeric" min="1" max="${AY[i]}" placeholder="1–${AY[i]}" aria-label="Ayah number"><button class="small" data-act="ixGoA" data-s="${s}">Go</button></div>
-       <div class="note" style="margin-top:8px">Rukus</div><div class="rkgrid">${rukusOf(s).map(r=>`<button data-goay="${s}:${r.from}" data-glbl="${esc(SN[i])} · ruku ${r.n}">Ruku ${r.n}<small>ayat ${r.from}–${r.to}${ok?' · p '+ayPage(s,r.from):''}</small></button>`).join('')}</div></div>`:''}`};
+     ${open?`<div class="ixpanel"><div class="row"><button class="small primary" data-goay="${s}:1">Open at ayah 1</button>${qLinked(s)?`<button class="small" data-qsur="${s}">▶ Listen</button>`:''}</div>
+       <div class="row" style="margin-top:6px"><span class="note">Ayah</span><input id="ixA" class="ayahin" type="number" inputmode="numeric" min="1" max="${AY[i]}" placeholder="1–${AY[i]}" aria-label="Ayah number"><button class="small" data-act="ixGoA" data-s="${s}">Open</button>${qLinked(s)?`<button class="small" data-act="ixPlayA" data-s="${s}">▶ Listen</button>`:''}</div>
+       <div class="note" style="margin-top:8px">Rukus</div><div class="rkgrid">${rukusOf(s).map(r=>`<div class="rk"><button data-goay="${s}:${r.from}" data-glbl="${esc(SN[i])} · ruku ${r.n}">Ruku ${r.n}<small>ayat ${r.from}–${r.to}${ok?' · p '+ayPage(s,r.from):''}</small></button>${qLinked(s)?`<button class="rkp" data-qruku="${r.i}" aria-label="Listen to ruku ${r.n}">▶</button>`:''}</div>`).join('')}</div></div>`:''}`};
   let body='';
   if(ixTab==='surah'){const m=ixMatches(ixQ);const list=m||SN.map((_,i)=>i);body=list.length?list.map(surahRow).join(''):'<p class="note">No surah matches.</p>'}
   else if(ixTab==='para'){body=PARA_START.map(([s,a],k)=>{const j=k+1,open=ixOpen==='j'+j,g0=gid(s,a),g1=j<30?gid(...PARA_START[j])-1:6236,rk=RUKU.map((g,i)=>[g,i]).filter(([g])=>g>=g0&&g<=g1);
       return `<button class="ixrow" data-ixj="${j}" aria-expanded="${open}"><span class="ixnum">${j}</span><span style="min-width:0"><span class="ixar">${PARA_AR[k]}</span><br><span class="ixmeta">Starts ${esc(SN[s-1])} ${a} · ${rk.length} rukus</span></span><span class="ixpg">${ok?'p '+ayPage(s,a):''}<br><span class="ixmeta">${open?'▲':'▼'}</span></span></button>
-       ${open?`<div class="ixpanel"><button class="small primary" data-goay="${s}:${a}" data-glbl="Para ${j} begins">Open where para ${j} begins</button><div class="rkgrid">${rk.map(([g,i],n)=>{const [rs,ra]=sa(g);return `<button data-goay="${rs}:${ra}" data-glbl="Para ${j} · ruku ${n+1}">Ruku ${n+1}<small>${esc(SN[rs-1])} ${ra}${ok?' · p '+ayPage(rs,ra):''}</small></button>`}).join('')}</div></div>`:''}`}).join('')}
+       ${open?`<div class="ixpanel"><button class="small primary" data-goay="${s}:${a}" data-glbl="Para ${j} begins">Open where para ${j} begins</button><div class="rkgrid">${rk.map(([g,i],n)=>{const [rs,ra]=sa(g);return `<div class="rk"><button data-goay="${rs}:${ra}" data-glbl="Para ${j} · ruku ${n+1}">Ruku ${n+1}<small>${esc(SN[rs-1])} ${ra}${ok?' · p '+ayPage(rs,ra):''}</small></button>${qLinked(rs)?`<button class="rkp" data-qruku="${i}" aria-label="Listen to ruku ${n+1}">▶</button>`:''}</div>`}).join('')}</div></div>`:''}`}).join('')}
   else{body=`<div class="row" style="margin-bottom:10px"><input id="ixP" type="number" inputmode="numeric" min="${F()}" max="${L()}" placeholder="Page ${F()}–${L()}" aria-label="Page number" class="grow" style="width:auto"><button class="primary" data-act="ixGoP">Open page</button></div>`+
       Array.from({length:30},(_,k)=>{const a=JUZ[k],b=k<29?JUZ[k+1]-1:L();let h='';for(let q=a;q<=b;q++)h+=`<button data-page="${q}" class="${q===curPage?'cur':''} ${S.mem[q]?'memd':''}">${q}</button>`;
         return `<p class="note" style="margin:12px 0 6px"><b>Para ${k+1}</b> · ${PARA_AR[k]}</p><div class="pggrid">${h}</div>`}).join('')}
@@ -1176,6 +1379,11 @@ document.addEventListener('click',async e=>{
   if(d.ixt){ixTab=d.ixt;ixOpen=null;render();return}
   if(d.ixs){ixOpen=ixOpen===+d.ixs?null:+d.ixs;const y=b.getBoundingClientRect().top;vIndex();const nb=document.querySelector(`[data-ixs="${d.ixs}"]`);if(nb)window.scrollBy(0,nb.getBoundingClientRect().top-y);return}
   if(d.ixj){const k='j'+d.ixj;ixOpen=ixOpen===k?null:k;const y=b.getBoundingClientRect().top;vIndex();const nb=document.querySelector(`[data-ixj="${d.ixj}"]`);if(nb)window.scrollBy(0,nb.getBoundingClientRect().top-y);return}
+  if(d.qsur){qPlaySurah(+d.qsur);return}
+  if(d.qruku){qPlayRuku(+d.qruku);return}
+  if(d.qpage){const r=pageRange(+d.qpage);if(r)qPlay(r[0],r[1],'Shaykh Maher · page '+d.qpage);return}
+  if(d.qay){const [qs,qa]=d.qay.split(':').map(Number);qPlayAyah(qs,qa);return}
+  if(d.qcmp){const [qs,qa]=d.qcmp.split(':').map(Number);qCompare(qs,qa);return}
   if(d.goay){const [gs,ga]=d.goay.split(':').map(Number);openAyah(gs,ga,d.glbl||(SN[gs-1]+' '+ga));return}
   if(d.chip){const t=$('#mkNote');if(t){t.value=(t.value?t.value.replace(/\s*$/,'')+'\n':'')+d.chip+': ';t.focus()}return}
   if(d.editmark){const [p,id]=d.editmark.split(':');openSheet(+p,id,false);return}
@@ -1241,6 +1449,13 @@ document.addEventListener('click',async e=>{
       save();closeSheet();drawMarks();refreshMarkCard();toast('Undone');break}
     case 'goMistakes':go('mistakes');break;
     case 'goIndex':go('index');break;
+    case 'qLink':$('#qIn').click();break;
+    case 'qAll':qPrepareAll();break;
+    case 'qCheck':{const v=+(($('#qChk')||{}).value);if(v)openQariReview(v);break}
+    case 'qUnlink':{if(!b.dataset.sure){b.dataset.sure=1;b.textContent='Tap again to remove all linked surahs';break}
+      for(const k of Object.keys(qState().files)){await idel('audio:'+QK(+k));await idel('qenergy:'+k)}S.qari={name:S.qari.name,files:{},times:{}};
+      if(String(player.key||'').startsWith('qari-')){au.pause();au.removeAttribute('src');player={id:null}}save();toast('Removed. Your phone folder is untouched.');render();renderDock();break}
+    case 'ixPlayA':{const v=+(($('#ixA')||{}).value)||1;qPlayAyah(+b.dataset.s,Math.min(AY[+b.dataset.s-1],v));break}
     case 'ixFind':ixQ=($('#ixQ')||{}).value||'';ixFind();break;
     case 'ixGoA':{const v=+(($('#ixA')||{}).value)||1;openAyah(+b.dataset.s,v);break}
     case 'ixGoP':{const v=+(($('#ixP')||{}).value)||F();openPage(v);break}
@@ -1276,7 +1491,7 @@ document.addEventListener('click',async e=>{
     case 'fileB':{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));a.download='hifz-backup-'+ymd()+'.json';document.body.appendChild(a);a.click();a.remove();toast('Backup file saved to Downloads');break}
     case 'restoreB':try{const v=JSON.parse($('#s-data').value);if(!v.settings||!v.pages)throw 0;S=Object.assign(JSON.parse(JSON.stringify(DEFAULTS)),v);S.settings=Object.assign({},DEFAULTS.settings,v.settings);save();toast('Restored');render()}catch(err){toast('That text is not a valid backup.')}break;
     case 'reset':if(!b.dataset.sure){b.dataset.sure=1;b.textContent='Tap again to clear everything';break}
-      for(const r of S.recs){await idel('audio:'+r.id);await idel('energy:'+r.id)}const keep=S.settings;S=JSON.parse(JSON.stringify(DEFAULTS));S.settings=keep;S.pointer=keep.firstPage;S.sabaqPtr=keep.firstPage;save();toast('Cleared');render();break;
+      for(const r of S.recs){await idel('audio:'+r.id);await idel('energy:'+r.id)}const keep=S.settings,keepQ=S.qari;S=JSON.parse(JSON.stringify(DEFAULTS));S.settings=keep;if(keepQ)S.qari=keepQ;S.pointer=keep.firstPage;S.sabaqPtr=keep.firstPage;save();toast('Cleared');render();break;
   }
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden){if(timer.on){S.minutes[ymd()]=(S.minutes[ymd()]||0)+(Date.now()-timer.start)/1000;timer.start=Date.now()}iput('state',S).catch(()=>{})}});
