@@ -1,6 +1,6 @@
 // Offline support: keeps the app files on the phone so it opens with no internet.
 // When you upload a new version, change VERSION so phones fetch the update.
-const VERSION = 'hifz-v8';
+const VERSION = 'hifz-v9';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
