@@ -93,6 +93,13 @@ textarea{min-height:80px;font-size:.78rem}
 .rk>button:first-child{border-radius:10px 0 0 10px}
 .rk>button.rkp{border-radius:0 10px 10px 0;border-left:0;padding:6px 9px;color:var(--accent)}
 .qchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.rgrid{display:grid;grid-template-columns:42px 1fr 72px;gap:8px;align-items:center;margin-top:8px}
+.rgrid select,.rgrid input{padding:8px;min-width:0}
+.rgrid input{text-align:center;font-variant-numeric:tabular-nums}
+.r3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.r3 label.f{font-size:.75rem}
+.rk3{display:grid;grid-template-columns:auto 1fr auto 1fr auto;gap:6px;align-items:center;margin-top:8px}
+.rk3 select,.rk3 input{padding:7px;min-width:0}
 .qchips button{padding:5px 9px;font-size:.8rem;font-variant-numeric:tabular-nums}
 .qprog{height:6px;border-radius:99px;background:var(--bg);overflow:hidden;margin-top:6px}
 .qprog i{display:block;height:100%;background:var(--gold);width:0}
@@ -678,7 +685,7 @@ function renderDock(){
      <div class="row" style="margin-top:6px">${ar.recording?'<button class="grow" data-act="ayStop">■ Stop</button><button class="primary grow" data-act="ayNext">Stop & next ▶</button>':'<button class="primary grow" data-act="ayStart">● Start ayah '+ar.ayah+'</button>'}</div>
      <div class="note" style="margin-top:4px">${ar.recording?'Tap the start of the next ayah to save this one and begin the next.':ar.pos?'Start point set on page '+ar.pos.page+'. Tap Start, then recite.':'Tap where the ayah begins on the page, then Start.'}</div></div>`}
   if(qBusy&&tab!=='audio')h+=`<div><div class="note" id="qpm">${esc(qMsg)}</div><div class="qprog"><i id="qpb" style="width:${Math.round(qPct*100)}%"></i></div></div>`;
-  const r=curRec()||(player.qq?{title:player.qq.label+(player.qq.items.length>1?' · '+(player.qq.i+1)+'/'+player.qq.items.length:'')+(player.left>1?' · '+player.left+' left':''),dur:au.duration}:null);
+  const r=curRec()||(player.qq?{title:player.qq.label+(player.qq.items.length>1?' · '+(player.qq.i+1)+'/'+player.qq.items.length:'')+(player.left>1?' · '+player.left+' left':'')+(player.qq.waiting?' · your turn…':''),dur:au.duration}:null);
   if(r&&!rec.on&&!ar.recording&&!(review&&tab==='audio')){const d=isFinite(au.duration)?au.duration:(r.dur||0);
     h+=`<div><div class="row"><button class="small primary" data-act="pp" aria-label="${au.paused?'Play':'Pause'}">${au.paused?'▶':'❚❚'}</button>
      <div class="grow"><div class="note" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.title)}</div><input type="range" id="seek" min="0" max="${d}" step="0.1" value="${au.currentTime}" aria-label="Position"></div>
@@ -975,7 +982,7 @@ function vAudio(){
      <div class="row" style="margin-top:6px"><button class="small primary" ${r.kind==='ayah'?`data-clip="${r.id}"`:`data-load="${r.id}"`}>${player.id===r.id?'Loaded':'▶ Play'}</button>${r.kind==='ayah'?`<button class="small" data-gopage="${r.page}">Page ${r.page}</button>`:''}${r.auto?`<button class="small" data-review="${r.id}">✂ ${S.recs.some(x=>x.src===r.id)?'Re-split':'Split into ayat'}</button>`:''}${r.src?'':`<button class="small" data-save="${r.id}">Save copy</button>`}<button class="small danger" data-del="${r.id}">Delete</button></div></div></div>`).join('')).join('')
    :`<p class="note" style="margin:0">${audView==='clips'?'Ayah clips you record on the mushaf appear here by date.':'Full-session recordings appear here by date.'}</p>`}</section>`;
   const rep=$('#rep');if(rep)rep.onchange=()=>{S.settings.repeat=+rep.value;save()};
-  const qe=$('#qEach');if(qe)qe.onchange=()=>{S.settings.qEach=+qe.value;save()};const qa=$('#qAll');if(qa)qa.onchange=()=>{S.settings.qAll=+qa.value;save()};
+  qBindRepeatOpts();qBindRange();
   const auS=$('#auS');if(auS)auS.onchange=()=>{const v=+auS.value;S.settings.autoSurah=v;save();$('#auI').value=(v===1||v===9)?'0':'1';$('#auA').max=AY[v-1]};
   document.querySelectorAll('[data-lbl]').forEach(i=>i.onchange=()=>{const r=curRec(),sorted=r.markers.slice().sort((a,b)=>a.t-b.t);sorted[+i.dataset.lbl].label=i.value;save()});
   document.querySelectorAll('[data-rename]').forEach(i=>i.onchange=()=>{const r=S.recs.find(x=>x.id===i.dataset.rename);r.title=i.value||r.title;save();renderDock()});
@@ -1010,6 +1017,7 @@ function vReview(){
   <section class="card"><div class="row"><h2 class="grow" style="margin:0">${qr?'Check ayah timings':'Check the split'}</h2><button class="small" data-act="revCancel">Close</button></div>
    <p style="margin:4px 0 0"><b>Surah ${review.surah} · ${esc(SN[review.surah-1])}</b> <span class="note">· ${qr?esc(qState().name):mmss(review.E.length*review.fr)+' recorded'}</span></p>
    <div class="stats" style="margin-top:10px"><div class="stat"><b>${list.filter(s=>!s.drop).length}</b><span>Clips</span></div><div class="stat"><b>${ay.length?ay[0].ayah+'–'+lastA:'–'}</b><span>Ayat</span></div><div class="stat"><b>${total}</b><span>In surah</span></div></div>
+   ${qr&&S.qari.times[review.surah]&&S.qari.times[review.surah].approx?'<div class="banner">These timings are approximate: the pauses could not be matched exactly. Listen to a few ayat and fix any cut with Join or Split here.</div>':''}
    ${warn}
    ${qr?`<label class="f" for="rvI">Before ayah 1</label><select id="rvI">${[0,1,2].filter(n=>qIntroNames(review.surah,n).length===n||n===0).map(n=>`<option value="${n}" ${review.intro===n?'selected':''}>${qIntroNames(review.surah,n).join(' + ')||'Nothing'}</option>`).join('')}</select>
    <label class="f" for="rvT">Pause sensitivity: <b id="rvTv">${Math.round(review.thr*100)}%</b> <span class="note">(higher finds fewer, deeper pauses; the ayat are matched again)</span></label><input id="rvT" type="range" min="0.12" max="0.6" step="0.02" value="${review.thr}"></section>`:''}
@@ -1048,7 +1056,7 @@ function reviewTick(){
   document.querySelectorAll('.segrow').forEach(el=>el.classList.toggle('cur',+el.dataset.i===cur));
 }
 async function saveReview(){
-  if(review.kind==='qari'){const s=review.surah;qSave(s,{intro:review.intro,start:review.start,end:review.end,cuts:review.cuts.slice().sort((x,y)=>x.a-y.a)},review.thr);S.qari.times[s].checked=true;save();review=null;au.pause();toast(SN[s-1]+': timings saved');render();renderDock();return}
+  if(review.kind==='qari'){const s=review.surah;qSave(s,{intro:review.intro,start:review.start,end:review.end,cuts:review.cuts.slice().sort((x,y)=>x.a-y.a)},review.thr);S.qari.times[s].checked=true;S.qari.times[s].approx=false;save();review=null;au.pause();toast(SN[s-1]+': timings saved');render();renderDock();return}
   const r=S.recs.find(x=>x.id===review.id);if(!r)return;const list=segs();
   const old=S.recs.filter(x=>x.src===r.id),pos={};old.forEach(o=>{if(o.markers[0].x!=null)pos[o.ayah+'|'+o.title]=o.markers[0]});
   S.recs=S.recs.filter(x=>x.src!==r.id);
@@ -1143,19 +1151,20 @@ function dipCands(E,fr,sens){
       let dep=0;for(let k=i0;k<j;k++)dep=Math.max(dep,lv2[k]-sm[k]);C.push({a:i0*fr,b:j*fr,len:(j-i0)*fr,depth:dep});i=j}else i++}
   return {C,start:fs*fr,end:(le+1)*fr};
 }
-function alignAyat(E,fr,w,thr0){
+function alignAyat(E,fr,w,thr0,wide){
   const d0=dipCands(E,fr,thr0);if(!d0)return null;const {C,start,end}=d0;
   const K=w.length-1,Wt=w.reduce((a,b)=>a+b,0);
   if(K<=0)return {cuts:[],start,end,cost:0,fit:0};
   if(C.length<K)return null;
   const T9=window.QTUNE||{},M=C.length,B=C.map(c=>c.b),A=C.map(c=>c.a),ALPHA=T9.a||4,BETA=T9.b||2.2,DC=T9.d||15,RW=C.map(c=>BETA*(Math.min(c.len,2)+Math.min(DC,Math.max(0,c.depth-6))/6));
   const lb=(arr,x)=>{let l=0,h=arr.length;while(l<h){const m=(l+h)>>1;if(arr[m]<x)l=m+1;else h=m}return l};
+  const WL=wide?.1:.25,WH=wide?10:4;
   function run(rate){
     const sc=(d,wk)=>{const x=Math.log(Math.max(d,.15)/(wk*rate));return ALPHA*x*x};
     let prev=new Float64Array(M).fill(Infinity);const back=[null];
-    for(let j=0;j<M;j++){const d=A[j]-start,ex=w[0]*rate;if(d>=.25*ex&&d<=4*ex)prev[j]=sc(d,w[0])-RW[j]}
+    for(let j=0;j<M;j++){const d=A[j]-start,ex=w[0]*rate;if(d>=WL*ex&&d<=WH*ex)prev[j]=sc(d,w[0])-RW[j]}
     for(let k=1;k<K;k++){const cur=new Float64Array(M).fill(Infinity),bk=new Int32Array(M).fill(-1),ex=w[k]*rate;
-      for(let j=k;j<M;j++){const hi2=A[j]-.25*ex;for(let i=lb(B,A[j]-4*ex);i<j&&B[i]<=hi2;i++){if(prev[i]===Infinity)continue;const v=prev[i]+sc(A[j]-B[i],w[k]);if(v<cur[j]){cur[j]=v;bk[j]=i}}
+      for(let j=k;j<M;j++){const hi2=A[j]-WL*ex;for(let i=lb(B,A[j]-WH*ex);i<j&&B[i]<=hi2;i++){if(prev[i]===Infinity)continue;const v=prev[i]+sc(A[j]-B[i],w[k]);if(v<cur[j]){cur[j]=v;bk[j]=i}}
         if(bk[j]>=0)cur[j]-=RW[j]}
       prev=cur;back.push(bk)}
     let best=Infinity,bj=-1;for(let j=0;j<M;j++){if(prev[j]===Infinity)continue;const v=prev[j]+sc(end-B[j],w[K]);if(v<best){best=v;bj=j}}
@@ -1173,14 +1182,26 @@ function alignAyat(E,fr,w,thr0){
   let fit=0;st.forEach((x,k)=>{const v=Math.log(Math.max(en[k]-x,.15)/(w[k]*rr));fit+=v*v});fit/=st.length;
   return {cuts:res.cuts,start,end,cost:res.cost/(K+1),fit};
 }
+function qProportional(s,E,fr,n,thr){
+  const d=dipCands(E,fr,thr)||{C:[],start:0,end:E.length*fr},w=qWeights(s,n),W=w.reduce((a,b)=>a+b,0),cuts=[];let acc=0,last=d.start;
+  for(let k=0;k<w.length-1;k++){acc+=w[k];const t=d.start+(d.end-d.start)*acc/W;
+    let best=null;for(const c of d.C){const m=(c.a+c.b)/2;if(c.a>last+.3&&Math.abs(m-t)<3&&(!best||Math.abs(m-t)<Math.abs((best.a+best.b)/2-t)))best=c}
+    const c=best?{a:best.a,b:best.b}:{a:t,b:t};cuts.push(c);last=c.b}
+  return {cuts,start:d.start,end:d.end,cost:0,fit:1,intro:n,approx:true};
+}
 function qAlign(s,E,fr,thr,forceIntro){
-  /* standard opening: Bismillah, except At-Tawbah and Al-Fatihah (where it is ayah 1) */const opts=forceIntro!=null?[forceIntro]:[(s===1||s===9)?0:1];let best=null;
-  for(const n of opts){const r=alignAyat(E,fr,qWeights(s,n),thr);if(!r)continue;const pen=((s===1||s===9)?n!==0:n!==1)?0.005:0;
+  const tries=[[thr,false],[thr*.6,false],[thr,true],[thr*.6,true],[thr*1.5,true]];
+  for(const [t,wide] of tries){const r=qAlign1(s,E,fr,t,forceIntro,wide);if(r)return r}
+  return qProportional(s,E,fr,forceIntro!=null?forceIntro:((s===1||s===9)?0:1),thr);
+}
+function qAlign1(s,E,fr,thr,forceIntro,wide){
+  /* the linked recording opens each surah with Bismillah, except At-Tawbah; in Al-Fatihah Bismillah is ayah 1 */const opts=forceIntro!=null?[forceIntro]:[(s===1||s===9)?0:1];let best=null;
+  for(const n of opts){const r=alignAyat(E,fr,qWeights(s,n),thr,wide);if(!r)continue;const pen=((s===1||s===9)?n!==0:n!==1)?0.005:0;
     if(!best||r.fit+pen<best.score)best={...r,intro:n,score:r.fit+pen}}
   return best;
 }
 const r2=x=>Math.round(x*100)/100;
-function qSave(s,res,thr){qState().times[s]={intro:res.intro,start:r2(res.start),end:r2(res.end),cuts:res.cuts.flatMap(c=>[r2(c.a),r2(c.b)]),thr:thr||.3,checked:false}}
+function qSave(s,res,thr){qState().times[s]={intro:res.intro,start:r2(res.start),end:r2(res.end),cuts:res.cuts.flatMap(c=>[r2(c.a),r2(c.b)]),thr:thr||.3,checked:false,approx:!!res.approx};if(S.qari.fail)delete S.qari.fail[s]}
 function qSegs(s){const T=S.qari.times[s],K=T.cuts.length/2,out=[];let t0=T.start;
   for(let k=0;k<=K;k++){const t1=k<K?T.cuts[2*k]:T.end;out.push([Math.max(0,t0-.12),t1+.22]);if(k<K)t0=T.cuts[2*k+1]}return out}
 function qAy(s,a){const T=S.qari.times[s],i=qIntroNames(s,T.intro).length+a-1;return qSegs(s)[i]}
@@ -1196,38 +1217,42 @@ async function qPrepare(s,quiet){
     const res=qAlign(s,E instanceof Float32Array?E:new Float32Array(E),fr,S.settings.qThr||.3);
     if(!res)throw new Error('Could not find the ayah pauses in this file.');
     qSave(s,res,S.settings.qThr||.3);save();if(!quiet)toast(SN[s-1]+': ayah timings ready');return true;
-  }catch(e){toast(e.message||'Could not read this file.');return false}
+  }catch(e){const m=e&&e.message||'Could not read this file.';(S.qari.fail=S.qari.fail||{})[s]=m;save();if(!qRun)toast(SN[s-1]+': '+m);return false}
   finally{qBusy=null;qMsg='';renderDock();if(tab==='audio'&&!review)render()}
 }
 async function qPrepareAll(){if(qRun||qBusy){toast('Already working. Please wait.');return}
   const todo=Object.keys(qState().files).map(Number).filter(s=>!S.qari.times[s]).sort((a,b)=>a-b);
-  if(!todo.length){toast('All linked surahs already have timings.');return}
-  qRun={n:todo.length,k:0,stop:false};toast('Preparing '+todo.length+' surah'+(todo.length===1?'':'s')+'. Keep the app open.');keepAwake(true);let n=0;
-  for(const s of todo){if(qRun.stop)break;qRun.k++;if(!await qPrepare(s,true))break;n++}
-  const stopped=qRun.stop;qRun=null;keepAwake(false);toast((stopped?'Stopped. ':'')+n+' surah'+(n===1?'':'s')+' prepared');qShow()}
+  if(!todo.length){S.qari.prepAll=false;save();toast('All linked surahs already have timings.');qShow();return}
+  qRun={n:todo.length,k:0,stop:false};S.qari.prepAll=true;save();toast('Preparing '+todo.length+' surah'+(todo.length===1?'':'s')+'. Keep the app open and the screen on.');keepAwake(true);let n=0,bad=0;
+  for(const s of todo){if(qRun.stop)break;qRun.k++;if(await qPrepare(s,true))n++;else bad++}
+  const stopped=qRun.stop;qRun=null;keepAwake(false);if(!stopped)S.qari.prepAll=false;save();
+  toast((stopped?'Stopped. ':'Done. ')+n+' prepared'+(bad?' · '+bad+' could not be read (see the list)':''));qShow()}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&qRun)keepAwake(true)});
 /* Playback queue: items {key,t0,t1,label,rep} */
 async function playItems(items,label){
   if(!items.length)return;player={id:null,key:player.key,url:player.url,a:null,b:null,left:0,loop:false,q:null,qq:{items,i:0,label,all:S.settings.qAll||1}};await qqStart(0)}
 async function qqStart(i){const Q=player.qq;if(!Q)return;const it=Q.items[i];Q.i=i;
   if(!await loadKey(it.key)){player.qq=null;renderDock();return}
   player.a=it.t0;player.b=it.t1>=1e8?null:it.t1;player.left=it.rep||1;au.currentTime=it.t0;au.play().catch(()=>{});renderDock()}
-function qqStep(){const Q=player.qq;if(!Q)return;
-  if(player.loop||player.left>1){if(!player.loop)player.left--;au.currentTime=player.a||0;au.play().catch(()=>{});return}
-  if(Q.i+1<Q.items.length){qqStart(Q.i+1);return}
-  if(Q.all>1){Q.all--;qqStart(0);return}
+function qqStep(){const Q=player.qq;if(!Q)return;const it=Q.items[Q.i]||{},gap=it.intro||it.mine?0:(S.settings.qGap||0)*1000;
+  const go=fn=>{if(gap){au.pause();Q.waiting=true;renderDock();clearTimeout(Q.wait);Q.wait=setTimeout(()=>{Q.waiting=false;if(player.qq===Q&&!Q.done)fn()},gap)}else fn()};
+  if(player.loop||player.left>1){if(!player.loop)player.left--;go(()=>{au.currentTime=player.a||0;au.play().catch(()=>{})});return}
+  if(Q.i+1<Q.items.length){go(()=>qqStart(Q.i+1));return}
+  if(Q.all>1){Q.all--;go(()=>qqStart(Q.items[0].intro&&Q.items.length>1?1:0));return}
   au.pause();Q.done=true;renderDock()}
 au.addEventListener('ended',()=>{if(player.qq&&!player.qq.done)qqStep()});
 async function qItemsFor(g0,g1,label){
-  const each=S.settings.qEach||1,items=[];let g=g0;
-  const miss=[];
+  const each=S.settings.qEach||1,perAyah=each>1||(S.settings.qGap||0)>0,items=[],miss=[];let g=g0;
   while(g<=g1){const [s,a]=sa(g),last=Math.min(SST[s],g1),[,a2]=sa(last);
     if(!qLinked(s)){miss.push(SN[s-1]);g=last+1;continue}
     if(!await qPrepare(s))return null;
-    const intro=a===1?qIntroNames(s,S.qari.times[s].intro).length:0,segs=qSegs(s);
-    if(each===1){items.push({key:QK(s),t0:segs[a===1?0:intro+a-1][0],t1:segs[qIntroNames(s,S.qari.times[s].intro).length+a2-1][1],label})}
-    else{const ni=qIntroNames(s,S.qari.times[s].intro).length;for(let x=a;x<=a2;x++){const sg=segs[ni+x-1];items.push({key:QK(s),t0:(x===1?segs[0][0]:sg[0]),t1:sg[1],label:SN[s-1]+' '+x,rep:each})}}
+    const T=S.qari.times[s],names=qIntroNames(s,T.intro),ni=names.length,segs=qSegs(s);
+    // a range that starts at ayah 1 begins with the surah's Bismillah, played once (not with every repeat)
+    if(a===1&&ni)items.push({key:QK(s),t0:segs[0][0],t1:segs[ni-1][1],label:SN[s-1]+' · '+names.join(' + '),rep:1,intro:true});
+    if(!perAyah)items.push({key:QK(s),t0:segs[ni+a-1][0],t1:segs[ni+a2-1][1],label});
+    else for(let x=a;x<=a2;x++){const sg=segs[ni+x-1];items.push({key:QK(s),t0:sg[0],t1:sg[1],label:SN[s-1]+' '+x,rep:each})}
     g=last+1}
-  if(miss.length)toast((items.length?'Skipping ':'Not linked yet: ')+miss.join(', '));
+  if(miss.length)toast((items.length?'Skipping ':'Not linked yet: ')+(miss.length>3?miss.length+' surahs that are not linked':miss.join(', ')));
   return items}
 async function qPlay(g0,g1,label){const it=await qItemsFor(g0,g1,label);if(it)await playItems(it,label)}
 const qPlaySurah=s=>qPlay(gid(s,1),SST[s],'Shaykh Maher · '+SN[s-1]);
@@ -1235,7 +1260,31 @@ const qPlayAyah=(s,a)=>qPlay(gid(s,a),gid(s,a),'Shaykh Maher · '+SN[s-1]+' '+a)
 const qPlayRuku=i=>{const g=RUKU[i],e=(RUKU[i+1]||6237)-1,[s]=sa(g);return qPlay(g,Math.min(e,SST[s]),'Shaykh Maher · '+SN[s-1]+' ruku '+(rukusOf(s).find(r=>r.i===i)||{}).n)};
 function myClip(s,a){return S.recs.filter(r=>r.kind==='ayah'&&r.surah===s&&r.ayah===a).sort((x,y)=>y.created-x.created)[0]}
 async function qCompare(s,a){const c=myClip(s,a);if(!c){toast('You have no recording of this ayah yet.');return}if(!await qPrepare(s))return;
-  const [t0,t1]=qAy(s,a);await playItems([{key:QK(s),t0,t1,label:'Shaykh Maher · '+SN[s-1]+' '+a},{key:c.src||c.id,t0:c.src?c.t0:0,t1:c.src?c.t1:1e9,label:'You · '+SN[s-1]+' '+a}],'Compare · '+SN[s-1]+' '+a)}
+  const [t0,t1]=qAy(s,a);await playItems([{key:QK(s),t0,t1,label:'Shaykh Maher · '+SN[s-1]+' '+a},{key:c.src||c.id,t0:c.src?c.t0:0,t1:c.src?c.t1:1e9,label:'You · '+SN[s-1]+' '+a,mine:true}],'Compare · '+SN[s-1]+' '+a)}
+/* From ... to ... repeat player */
+function qRangeLabel(s1,a1,s2,a2){return s1===s2?(a1===a2?`${SN[s1-1]} ${a1}`:`${SN[s1-1]} ${a1}–${a2}`):`${SN[s1-1]} ${a1} – ${SN[s2-1]} ${a2}`}
+async function qPlayRange(s1,a1,s2,a2){
+  if(!(s1>=1&&s1<=114&&s2>=1&&s2<=114)){toast('Choose the surahs first.');return}
+  a1=Math.max(1,Math.min(AY[s1-1],a1||1));a2=Math.max(1,Math.min(AY[s2-1],a2||AY[s2-1]));
+  let g0=gid(s1,a1),g1=gid(s2,a2);if(g0>g1){toast('“To” comes before “From”. Swapped them.');[g0,g1]=[g1,g0];[s1,a1,s2,a2]=[s2,a2,s1,a1]}
+  const lab=qRangeLabel(s1,a1,s2,a2),r={s1,a1,s2,a2};S.settings.qRange=r;
+  S.qRecent=[r,...(S.qRecent||[]).filter(x=>!(x.s1===s1&&x.a1===a1&&x.s2===s2&&x.a2===a2))].slice(0,6);save();
+  await qPlay(g0,g1,'Shaykh Maher · '+lab)}
+function qRepeatOpts(){const o=(id,lab,vals,cur,suf)=>`<div><label class="f" for="${id}">${lab}</label><select id="${id}">${vals.map(n=>`<option value="${n}" ${cur==n?'selected':''}>${n}${suf||''}</option>`).join('')}</select></div>`;
+  return `<div class="r3">${o('qEach','Repeat each ayah',[1,2,3,4,5,7,10,15,20],S.settings.qEach||1,'×')}${o('qAll','Repeat the range',[1,2,3,5,7,10,20],S.settings.qAll||1,'×')}${o('qGap','Pause after ayah',[0,1,2,3,5,8],S.settings.qGap||0,' s')}</div>`}
+function qBindRepeatOpts(){const b=(id,k)=>{const e=$('#'+id);if(e)e.onchange=()=>{S.settings[k]=+e.value;save()}};b('qEach','qEach');b('qAll','qAll');b('qGap','qGap')}
+function qRangeHTML(){
+  const r=S.settings.qRange||{s1:1,a1:1,s2:1,a2:7},opt=sel=>SN.map((n,i)=>`<option value="${i+1}" ${sel===i+1?'selected':''}>${i+1} · ${esc(n)}${qLinked(i+1)?'':' (not linked)'}</option>`).join('');
+  return `<h2 style="margin-top:16px">Repeat selected ayat</h2>
+   <div class="rgrid"><span class="note">From</span><select id="rS1" aria-label="From surah">${opt(r.s1)}</select><input id="rA1" type="number" inputmode="numeric" min="1" max="${AY[r.s1-1]}" value="${r.a1}" aria-label="From ayah">
+    <span class="note">To</span><select id="rS2" aria-label="To surah">${opt(r.s2)}</select><input id="rA2" type="number" inputmode="numeric" min="1" max="${AY[r.s2-1]}" value="${r.a2}" aria-label="To ayah"></div>
+   ${qRepeatOpts()}
+   <button class="primary" data-act="qRangePlay" style="width:100%;margin-top:12px">▶ Play and repeat</button>
+   <p class="note" style="margin:8px 0 0">Starting at ayah 1 plays the surah's Bismillah once first (At-Tawbah has none). A pause after each ayah gives you time to recite it back.</p>
+   ${(S.qRecent||[]).length?`<p class="note" style="margin:10px 0 0">Recent</p><div class="qchips">${S.qRecent.map((x,i)=>`<button data-qrecent="${i}">↻ ${esc(qRangeLabel(x.s1,x.a1,x.s2,x.a2))}</button>`).join('')}</div>`:''}`}
+function qBindRange(){const s1=$('#rS1'),s2=$('#rS2'),a1=$('#rA1'),a2=$('#rA2');if(!s1)return;
+  s1.onchange=()=>{const v=+s1.value;a1.max=AY[v-1];a1.value=Math.min(+a1.value||1,AY[v-1]);if(+s2.value<v){s2.value=v;a2.max=AY[v-1];a2.value=AY[v-1]}};
+  s2.onchange=()=>{const v=+s2.value;a2.max=AY[v-1];a2.value=AY[v-1]}}
 function qPageHTML(p){
   const r=layoutOk()&&pageRange(p);if(!r)return '';
   let h='<h2>Recitation</h2>';
@@ -1246,6 +1295,9 @@ function qPageHTML(p){
   if(miss.length)h+=`<p class="note" style="margin:6px 0 0">${miss.map(s=>SN[s-1]).join(', ')} not linked.</p>`;
   h+=`<div class="qchips">${ays.map(([s,a])=>`<button data-qay="${s}:${a}" ${qLinked(s)?'':'disabled'} aria-label="Listen to ${esc(SN[s-1])} ${a}">▶ ${ays.some(x=>x[0]!==s)?s+':':''}${a}</button>${myClip(s,a)?`<button data-qcmp="${s}:${a}" aria-label="Compare ${esc(SN[s-1])} ${a} with my recording">⇄ ${a}</button>`:''}`).join('')}</div>
    <p class="note" style="margin:8px 0 0">▶ plays one ayah. ⇄ plays Shaykh Maher, then your own recording of that ayah.</p>`;
+  const lk=ays.filter(([s])=>qLinked(s)),op=(sel)=>lk.map(([s,a],i)=>`<option value="${s}:${a}" ${i===sel?'selected':''}>${lk.some(x=>x[0]!==s)?SN[s-1]+' ':''}${a}</option>`).join('');
+  if(lk.length>1)h+=`<div class="rk3"><span class="note">From</span><select id="pqF" aria-label="From ayah">${op(0)}</select><span class="note">to</span><select id="pqT" aria-label="To ayah">${op(lk.length-1)}</select><button class="small primary" data-act="qPageRange">▶ Repeat</button></div>
+   <p class="note" style="margin:6px 0 0">Repeat ${S.settings.qEach||1}× each, range ${S.settings.qAll||1}×${S.settings.qGap?', '+S.settings.qGap+' s pause':''}. Change these in Audio.</p>`;
   return h}
 function qCardHTML(){
   const q=qState(),linked=Object.keys(q.files).length,timed=Object.keys(q.times).filter(s=>q.files[s]).length,mb=Object.values(q.files).reduce((n,f)=>n+(f.size||0),0)/1048576;
@@ -1253,12 +1305,13 @@ function qCardHTML(){
    <div class="stats"><div class="stat"><b>${linked}</b><span>of 114 linked</span></div><div class="stat"><b>${timed}</b><span>with timings</span></div><div class="stat"><b>${Math.round(mb)}</b><span>MB</span></div></div>
    ${qBusy||qRun?`<div class="banner" style="margin:10px 0 0"><b id="qpm">${esc(qMsg||'Working…')}</b><div class="qprog"><i id="qpb" style="width:${Math.round(qPct*100)}%"></i></div>
      <div class="row" style="margin-top:8px"><span class="note grow">Keep the app open and the screen on. Long surahs such as Al-Baqarah take a minute or two.</span>${qRun?'<button class="small" data-act="qStop">Stop</button>':''}</div></div>`:''}
+   ${!qRun&&!qBusy&&q.prepAll&&timed<linked?`<div class="banner" style="margin:10px 0 0">Preparing the timings was interrupted, probably when the screen turned off. <button class="small primary" data-act="qAll" style="margin-top:6px">Continue (${linked-timed} left)</button></div>`:''}
+   ${q.fail&&Object.keys(q.fail).length?`<div class="banner" style="margin:10px 0 0"><b>Could not prepare:</b>${Object.entries(q.fail).map(([sx,m])=>`<div class="row" style="margin-top:4px"><span class="grow">${sx} · ${esc(SN[sx-1])} <span class="note">${esc(m)}</span></span><button class="small" data-qretry="${sx}">Retry</button></div>`).join('')}</div>`:''}
    <button class="primary" data-act="qLink" style="width:100%;margin-top:12px" ${qBusy?'disabled':''}>${linked?'Link more files':'Link recitation folder'}</button>
    <p class="note" style="margin:8px 0 0">In the file picker open <b>Internal storage › Tilawat Mahir Al Muaqqili</b>, tap <b>⋮ › Select all</b>, then <b>Done</b>. The files are copied into the app so they play offline. Surah numbers are read from the file names.</p>
-   ${linked?`<div class="grid2" style="margin-top:6px"><div><label class="f" for="qEach">Repeat each ayah</label><select id="qEach">${[1,2,3,5,7,10,20].map(n=>`<option ${(S.settings.qEach||1)==n?'selected':''}>${n}</option>`).join('')}</select></div>
-     <div><label class="f" for="qAll">Then repeat all</label><select id="qAll">${[1,2,3,5,10].map(n=>`<option ${(S.settings.qAll||1)==n?'selected':''}>${n}</option>`).join('')}</select></div></div>
-    <div class="row" style="margin-top:12px"><button class="grow" data-act="qAll" ${qBusy||qRun||timed===linked?'disabled':''}>${timed===linked?'All timings ready ✓':'Prepare all timings ('+(linked-timed)+' left)'}</button></div>
-    <label class="f" for="qChk">Check the ayah timings of a surah</label><div class="row"><select id="qChk" class="grow" style="width:auto">${Object.keys(q.files).map(Number).sort((a,b)=>a-b).map(s=>`<option value="${s}">${s} · ${esc(SN[s-1])}${q.times[s]?(q.times[s].checked?' ✓':''):' (not prepared)'}</option>`).join('')}</select><button data-act="qCheck" ${qBusy?'disabled':''}>Check</button></div>
+   ${linked?`${qRangeHTML()}
+    <h2 style="margin-top:18px">Ayah timings</h2><div class="row"><button class="grow" data-act="qAll" ${qBusy||qRun||timed===linked?'disabled':''}>${timed===linked?'All timings ready ✓':'Prepare all timings ('+(linked-timed)+' left)'}</button></div>
+    <label class="f" for="qChk">Check the ayah timings of a surah</label><div class="row"><select id="qChk" class="grow" style="width:auto">${Object.keys(q.files).map(Number).sort((a,b)=>a-b).map(s=>`<option value="${s}">${s} · ${esc(SN[s-1])}${q.times[s]?(q.times[s].checked?' ✓':q.times[s].approx?' (approximate, please check)':''):' (not prepared)'}</option>`).join('')}</select><button data-act="qCheck" ${qBusy?'disabled':''}>Check</button></div>
     <p class="note" style="margin:8px 0 0">Timings are worked out the first time you play a surah, by matching Shaykh Maher's pauses to each ayah's length. Check a surah to listen to each ayah and fix any cut.</p>
     <button class="small danger" data-act="qUnlink" style="margin-top:10px">Remove linked recitation from the app</button>`:''}</section>`}
 async function openQariReview(s){
@@ -1282,6 +1335,7 @@ function vIndex(){
     return `<button class="ixrow" data-ixs="${s}" aria-expanded="${open}"><span class="ixnum">${s}</span><span style="min-width:0"><span class="ixar">${esc(SAR[i])}</span><br><b>${esc(SN[i])}</b> <span class="ixmeta">· ${AY[i]} ayat · ${(rukusOf(s)).length} ruku${rukusOf(s).length>1?'s':''}${ok?` · para ${jA}${jB!==jA?'–'+jB:''}`:''}</span></span><span class="ixpg">${ok?'p '+p:''}<br><span class="ixmeta">${open?'▲':'▼'}</span></span></button>
      ${open?`<div class="ixpanel"><div class="row"><button class="small primary" data-goay="${s}:1">Open at ayah 1</button>${qLinked(s)?`<button class="small" data-qsur="${s}">▶ Listen</button>`:''}</div>
        <div class="row" style="margin-top:6px"><span class="note">Ayah</span><input id="ixA" class="ayahin" type="number" inputmode="numeric" min="1" max="${AY[i]}" placeholder="1–${AY[i]}" aria-label="Ayah number"><button class="small" data-act="ixGoA" data-s="${s}">Open</button>${qLinked(s)?`<button class="small" data-act="ixPlayA" data-s="${s}">▶ Listen</button>`:''}</div>
+       ${qLinked(s)?`<div class="rk3"><span class="note">From</span><input id="ixF" type="number" inputmode="numeric" min="1" max="${AY[i]}" value="1" aria-label="From ayah"><span class="note">to</span><input id="ixT" type="number" inputmode="numeric" min="1" max="${AY[i]}" value="${Math.min(AY[i],10)}" aria-label="To ayah"><button class="small primary" data-act="ixRange" data-s="${s}">▶ Repeat</button></div>`:''}
        <div class="note" style="margin-top:8px">Rukus</div><div class="rkgrid">${rukusOf(s).map(r=>`<div class="rk"><button data-goay="${s}:${r.from}" data-glbl="${esc(SN[i])} · ruku ${r.n}">Ruku ${r.n}<small>ayat ${r.from}–${r.to}${ok?' · p '+ayPage(s,r.from):''}</small></button>${qLinked(s)?`<button class="rkp" data-qruku="${r.i}" aria-label="Listen to ruku ${r.n}">▶</button>`:''}</div>`).join('')}</div></div>`:''}`};
   let body='';
   if(ixTab==='surah'){const m=ixMatches(ixQ);const list=m||SN.map((_,i)=>i);body=list.length?list.map(surahRow).join(''):'<p class="note">No surah matches.</p>'}
@@ -1397,6 +1451,8 @@ document.addEventListener('click',async e=>{
   if(d.ixs){ixOpen=ixOpen===+d.ixs?null:+d.ixs;const y=b.getBoundingClientRect().top;vIndex();const nb=document.querySelector(`[data-ixs="${d.ixs}"]`);if(nb)window.scrollBy(0,nb.getBoundingClientRect().top-y);return}
   if(d.ixj){const k='j'+d.ixj;ixOpen=ixOpen===k?null:k;const y=b.getBoundingClientRect().top;vIndex();const nb=document.querySelector(`[data-ixj="${d.ixj}"]`);if(nb)window.scrollBy(0,nb.getBoundingClientRect().top-y);return}
   if(d.qsur){qPlaySurah(+d.qsur);return}
+  if(d.qretry){const sx=+d.qretry;delete S.qari.times[sx];await idel('qenergy:'+sx);if(await qPrepare(sx))render();return}
+  if(d.qrecent){const x=(S.qRecent||[])[+d.qrecent];if(x)qPlayRange(x.s1,x.a1,x.s2,x.a2);return}
   if(d.qruku){qPlayRuku(+d.qruku);return}
   if(d.qpage){const r=pageRange(+d.qpage);if(r)qPlay(r[0],r[1],'Shaykh Maher · page '+d.qpage);return}
   if(d.qay){const [qs,qa]=d.qay.split(':').map(Number);qPlayAyah(qs,qa);return}
@@ -1467,6 +1523,9 @@ document.addEventListener('click',async e=>{
     case 'goMistakes':go('mistakes');break;
     case 'goIndex':go('index');break;
     case 'qLink':$('#qIn').click();break;
+    case 'qRangePlay':qPlayRange(+$('#rS1').value,+$('#rA1').value,+$('#rS2').value,+$('#rA2').value);break;
+    case 'qPageRange':{const [s1,a1]=$('#pqF').value.split(':').map(Number),[s2,a2]=$('#pqT').value.split(':').map(Number);qPlayRange(s1,a1,s2,a2);break}
+    case 'ixRange':{const sv=+b.dataset.s;qPlayRange(sv,+$('#ixF').value,sv,+$('#ixT').value);break}
     case 'qAll':qPrepareAll();break;
     case 'qStop':if(qRun){qRun.stop=true;toast('Stopping after this surah…')}break;
     case 'qCheck':{const v=+(($('#qChk')||{}).value);if(v)openQariReview(v);break}
@@ -1491,13 +1550,13 @@ document.addEventListener('click',async e=>{
     case 'undo':{const a=S.marks[curPage]||[],t=ymd();for(let i=a.length-1;i>=0;i--)if(a[i].d===t){a.splice(i,1);break}save();render();break}
     case 'fixAll':(S.marks[curPage]||[]).forEach(m=>{if(!m.fixed)m.fixed=ymd()});save();toast('All marked corrected');drawMarks();refreshMarkCard();break;
     case 'clearMarks':if(!b.dataset.sure){b.dataset.sure=1;b.textContent='Tap again to erase';break}(S.marks[curPage]||[]).forEach(m=>undoStack.push({op:'erase',p:curPage,m}));delete S.marks[curPage];save();drawMarks();refreshMarkCard();break;
-    case 'pp':if(au.paused){if(player.b==null&&player.a!=null){player.b=isFinite(au.duration)?au.duration:null}au.play().catch(()=>{})}else au.pause();break;
+    case 'pp':if(player.qq&&player.qq.waiting){clearTimeout(player.qq.wait);player.qq.waiting=false;}if(au.paused){if(player.b==null&&player.a!=null){player.b=isFinite(au.duration)?au.duration:null}au.play().catch(()=>{})}else au.pause();break;
     case 'back5':au.currentTime=Math.max(0,au.currentTime-5);break;
     case 'setA':player.a=au.currentTime;if(player.b!=null&&player.b<=player.a)player.b=null;renderDock();break;
     case 'setB':if(player.a==null)player.a=0;if(au.currentTime>player.a){player.b=au.currentTime;player.left=S.settings.repeat||1;au.currentTime=player.a;au.play().catch(()=>{})}renderDock();break;
     case 'loop':player.loop=!player.loop;if(player.loop&&player.b==null){player.a=player.a??0;player.b=isFinite(au.duration)?au.duration:null}renderDock();break;
     case 'speed':{const sp=[0.75,1,1.25,1.5],i=(sp.indexOf(S.settings.speed||1)+1)%sp.length;S.settings.speed=sp[i];au.playbackRate=sp[i];save();renderDock();break}
-    case 'closeP':au.pause();au.removeAttribute('src');player={id:null};renderDock();if(tab!=='today')render();break;
+    case 'closeP':if(player.qq)clearTimeout(player.qq.wait);au.pause();au.removeAttribute('src');player={id:null};renderDock();if(tab!=='today')render();break;
     case 'saveSet':{const s=S.settings,n=(id,min,max,def)=>{const v=parseInt($(id).value,10);return isNaN(v)?def:Math.min(max,Math.max(min,v))};
       s.sabaqPerDay=n('#s-sab',1,10,1);s.sabaqiPages=n('#s-sqi',1,60,20);s.manzilPerDay=n('#s-man',1,120,20);s.reviewMax=n('#s-rm',0,30,4);s.goal=n('#s-goal',5,300,45);s.remind=$('#s-rem').value||'05:30';s.ramadan=$('#s-ram').value||s.ramadan;
       s.firstPage=n('#s-fp',1,700,2);s.firstPdf=n('#s-pdf',1,2000,5);s.lastPage=n('#s-lp',s.firstPage,1000,611);
@@ -1519,6 +1578,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){if(timer.o
   const st=await iget('state');
   if(st){S=Object.assign(JSON.parse(JSON.stringify(DEFAULTS)),st);S.settings=Object.assign({},DEFAULTS.settings,st.settings)}
   curPage=(todayPlan().sabaq[0])||S.pointer;
+  if(S.qari&&S.qari.prepAll)setTimeout(()=>toast('Preparing the timings was interrupted. Open Audio and tap Continue.'),1500);
   pdfIdx=await iget('pdfIdx')||null;pdfBlob=pdfIdx?await iget('pdf'):null;if(!pdfBlob)pdfIdx=null;
   go('today');renderDock();
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')){navigator.serviceWorker.register('sw.js').catch(()=>{})}
