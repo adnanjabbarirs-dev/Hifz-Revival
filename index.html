@@ -1076,12 +1076,13 @@ const qLinked=s=>!!(S.qari&&S.qari.files&&S.qari.files[s]);
 const qHasAny=()=>!!(S.qari&&Object.keys(S.qari.files||{}).length);
 function surahFromName(n){const b=String(n).replace(/\.[a-z0-9]+$/i,'').replace(/\d+\s*kbps/ig,' ').replace(/\d+\s*khz/ig,' ');const m=b.match(/\d{1,3}/g);if(!m)return null;
   const t=m.filter(x=>x.length===3),v=+(t.length?t[t.length-1]:m[m.length-1]);return v>=1&&v<=114?v:null}
-let qBusy=null,qMsg='',qPct=0;
+let qBusy=null,qMsg='',qPct=0,qRun=null;
+const qShow=()=>{if(tab==='audio'&&!review)render();else renderDock()};
 function qProg(msg,f){qMsg=msg;qPct=f;const a=$('#qpm');if(a)a.textContent=msg;const b=$('#qpb');if(b)b.style.width=Math.round(f*100)+'%';if(!a&&tab!=='audio')renderDock()}
 async function linkQari(files){
   const q=qState(),list=[...files].map(f=>({f,s:surahFromName(f.name)})).filter(x=>x.s).sort((a,b)=>a.s-b.s),skip=files.length-list.length;
   if(!list.length){toast('No surah numbers found in those file names.');return}
-  qBusy='link';let n=0;
+  qBusy='link';let n=0;qProg('Copying '+list.length+' files into the app…',0);qShow();
   for(const {f,s} of list){qProg(`Copying ${n+1} of ${list.length}: ${SN[s-1]}`,n/list.length);
     try{await iput('audio:'+QK(s),f)}catch(e){toast('Phone storage is full. '+n+' surahs were linked.');break}
     const prev=(q.prev||{})[s]||q.files[s];if(!(prev&&prev.name===f.name&&prev.size===f.size)){delete q.times[s];await idel('qenergy:'+s)}
@@ -1175,20 +1176,23 @@ async function qPrepare(s,quiet){
   if(S.qari&&S.qari.times&&S.qari.times[s])return true;
   if(!qLinked(s)){toast(SN[s-1]+' is not linked yet. Link the recitation folder in Audio.');return false}
   if(qBusy){toast('Please wait: still working on '+(typeof qBusy==='number'?SN[qBusy-1]:'the files')+'.');return false}
-  qBusy=s;qProg('Finding the ayat in '+SN[s-1]+'… 0%',0);renderDock();
+  qBusy=s;const pre=qRun?`Surah ${qRun.k} of ${qRun.n} · `:'';qProg(pre+'Finding the ayat in '+SN[s-1]+'… 0%',0);qShow();
   try{
     let E=await iget('qenergy:'+s),fr=.02;
     if(!E){const blob=await iget('audio:'+QK(s));if(!blob)throw new Error('The audio file is missing. Link the folder again.');
-      const r=await mp3Energy(blob,f=>qProg('Finding the ayat in '+SN[s-1]+'… '+Math.round(f*100)+'%',f));E=r.E;fr=r.fr;await iput('qenergy:'+s,E).catch(()=>{})}
+      const r=await mp3Energy(blob,f=>qProg(pre+'Finding the ayat in '+SN[s-1]+'… '+Math.round(f*100)+'%',f));E=r.E;fr=r.fr;await iput('qenergy:'+s,E).catch(()=>{})}
     const res=qAlign(s,E instanceof Float32Array?E:new Float32Array(E),fr,S.settings.qThr||.3);
     if(!res)throw new Error('Could not find the ayah pauses in this file.');
     qSave(s,res,S.settings.qThr||.3);save();if(!quiet)toast(SN[s-1]+': ayah timings ready');return true;
   }catch(e){toast(e.message||'Could not read this file.');return false}
   finally{qBusy=null;qMsg='';renderDock();if(tab==='audio'&&!review)render()}
 }
-async function qPrepareAll(){const todo=Object.keys(qState().files).map(Number).filter(s=>!S.qari.times[s]).sort((a,b)=>a-b);
+async function qPrepareAll(){if(qRun||qBusy){toast('Already working. Please wait.');return}
+  const todo=Object.keys(qState().files).map(Number).filter(s=>!S.qari.times[s]).sort((a,b)=>a-b);
   if(!todo.length){toast('All linked surahs already have timings.');return}
-  keepAwake(true);let n=0;for(const s of todo){if(!await qPrepare(s,true))break;n++;if(tab==='audio'&&!review)render()}keepAwake(false);toast(n+' surah'+(n===1?'':'s')+' prepared')}
+  qRun={n:todo.length,k:0,stop:false};toast('Preparing '+todo.length+' surah'+(todo.length===1?'':'s')+'. Keep the app open.');keepAwake(true);let n=0;
+  for(const s of todo){if(qRun.stop)break;qRun.k++;if(!await qPrepare(s,true))break;n++}
+  const stopped=qRun.stop;qRun=null;keepAwake(false);toast((stopped?'Stopped. ':'')+n+' surah'+(n===1?'':'s')+' prepared');qShow()}
 /* Playback queue: items {key,t0,t1,label,rep} */
 async function playItems(items,label){
   if(!items.length)return;player={id:null,key:player.key,url:player.url,a:null,b:null,left:0,loop:false,q:null,qq:{items,i:0,label,all:S.settings.qAll||1}};await qqStart(0)}
@@ -1235,12 +1239,13 @@ function qCardHTML(){
   const q=qState(),linked=Object.keys(q.files).length,timed=Object.keys(q.times).filter(s=>q.files[s]).length,mb=Object.values(q.files).reduce((n,f)=>n+(f.size||0),0)/1048576;
   return `<section class="card"><h2>Recitation · ${esc(q.name)}</h2>
    <div class="stats"><div class="stat"><b>${linked}</b><span>of 114 linked</span></div><div class="stat"><b>${timed}</b><span>with timings</span></div><div class="stat"><b>${Math.round(mb)}</b><span>MB</span></div></div>
-   ${qBusy?`<p class="note" id="qpm" style="margin:10px 0 0">${esc(qMsg)}</p><div class="qprog"><i id="qpb" style="width:${Math.round(qPct*100)}%"></i></div>`:''}
+   ${qBusy||qRun?`<div class="banner" style="margin:10px 0 0"><b id="qpm">${esc(qMsg||'Working…')}</b><div class="qprog"><i id="qpb" style="width:${Math.round(qPct*100)}%"></i></div>
+     <div class="row" style="margin-top:8px"><span class="note grow">Keep the app open and the screen on. Long surahs such as Al-Baqarah take a minute or two.</span>${qRun?'<button class="small" data-act="qStop">Stop</button>':''}</div></div>`:''}
    <button class="primary" data-act="qLink" style="width:100%;margin-top:12px" ${qBusy?'disabled':''}>${linked?'Link more files':'Link recitation folder'}</button>
    <p class="note" style="margin:8px 0 0">In the file picker open <b>Internal storage › Tilawat Mahir Al Muaqqili</b>, tap <b>⋮ › Select all</b>, then <b>Done</b>. The files are copied into the app so they play offline. Surah numbers are read from the file names.</p>
    ${linked?`<div class="grid2" style="margin-top:6px"><div><label class="f" for="qEach">Repeat each ayah</label><select id="qEach">${[1,2,3,5,7,10,20].map(n=>`<option ${(S.settings.qEach||1)==n?'selected':''}>${n}</option>`).join('')}</select></div>
      <div><label class="f" for="qAll">Then repeat all</label><select id="qAll">${[1,2,3,5,10].map(n=>`<option ${(S.settings.qAll||1)==n?'selected':''}>${n}</option>`).join('')}</select></div></div>
-    <div class="row" style="margin-top:12px"><button class="grow" data-act="qAll" ${qBusy||timed===linked?'disabled':''}>Prepare all timings</button></div>
+    <div class="row" style="margin-top:12px"><button class="grow" data-act="qAll" ${qBusy||qRun||timed===linked?'disabled':''}>${timed===linked?'All timings ready ✓':'Prepare all timings ('+(linked-timed)+' left)'}</button></div>
     <label class="f" for="qChk">Check the ayah timings of a surah</label><div class="row"><select id="qChk" class="grow" style="width:auto">${Object.keys(q.files).map(Number).sort((a,b)=>a-b).map(s=>`<option value="${s}">${s} · ${esc(SN[s-1])}${q.times[s]?(q.times[s].checked?' ✓':''):' (not prepared)'}</option>`).join('')}</select><button data-act="qCheck" ${qBusy?'disabled':''}>Check</button></div>
     <p class="note" style="margin:8px 0 0">Timings are worked out the first time you play a surah, by matching Shaykh Maher's pauses to each ayah's length. Check a surah to listen to each ayah and fix any cut.</p>
     <button class="small danger" data-act="qUnlink" style="margin-top:10px">Remove linked recitation from the app</button>`:''}</section>`}
@@ -1451,6 +1456,7 @@ document.addEventListener('click',async e=>{
     case 'goIndex':go('index');break;
     case 'qLink':$('#qIn').click();break;
     case 'qAll':qPrepareAll();break;
+    case 'qStop':if(qRun){qRun.stop=true;toast('Stopping after this surah…')}break;
     case 'qCheck':{const v=+(($('#qChk')||{}).value);if(v)openQariReview(v);break}
     case 'qUnlink':{if(!b.dataset.sure){b.dataset.sure=1;b.textContent='Tap again to remove all linked surahs';break}
       for(const k of Object.keys(qState().files)){await idel('audio:'+QK(+k));await idel('qenergy:'+k)}S.qari={name:S.qari.name,files:{},times:{}};
