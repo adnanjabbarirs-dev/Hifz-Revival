@@ -1,6 +1,6 @@
 // Offline support: keeps the app files on the phone so it opens with no internet.
 // When you upload a new version, change VERSION so phones fetch the update.
-const VERSION = 'hifz-v14';
+const VERSION = 'hifz-v16';
 const ASR_CACHE = 'hifz-asr-1'; // speech runtime and word list, kept across app updates
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
